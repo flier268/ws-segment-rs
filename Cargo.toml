@@ -8,12 +8,12 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/flier268/ws-segment-rs"
 rust-version = "1.70"
 
 [workspace.dependencies]
-ws-segment-rs-dict = { path = "crates/novel-segment-dict", version = "0.1.0" }
-ws-segment-rs = { path = "crates/novel-segment", version = "0.1.0" }
+ws-segment-rs-dict = { path = "crates/novel-segment-dict", version = "0.1.1" }
+ws-segment-rs = { path = "crates/novel-segment", version = "0.1.1" }

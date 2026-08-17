@@ -3,23 +3,72 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+/// True when every code point is BMP (one UTF-16 unit). Fast path for typical CJK/ASCII.
+#[inline]
+pub fn is_bmp(s: &str) -> bool {
+    // UTF-8 encodes non-BMP as 4-byte sequences (leading byte >= 0xF0).
+    !s.as_bytes().iter().any(|&b| b >= 0xF0)
+}
+
 /// JS `String.length` (UTF-16 code units).
+#[inline]
 pub fn char_len(s: &str) -> usize {
-    s.encode_utf16().count()
+    if s.is_ascii() {
+        s.len()
+    } else if is_bmp(s) {
+        s.chars().count()
+    } else {
+        s.chars().map(char::len_utf16).sum()
+    }
 }
 
 pub fn char_slice(s: &str, start: usize, len: usize) -> String {
-    let units: Vec<u16> = s.encode_utf16().skip(start).take(len).collect();
-    String::from_utf16_lossy(&units)
+    if len == 0 {
+        return String::new();
+    }
+    if s.is_ascii() {
+        if start >= s.len() {
+            return String::new();
+        }
+        let end = (start + len).min(s.len());
+        return s[start..end].to_string();
+    }
+    if is_bmp(s) {
+        return s.chars().skip(start).take(len).collect();
+    }
+    let units: Vec<u16> = s.encode_utf16().collect();
+    if start >= units.len() {
+        return String::new();
+    }
+    let end = (start + len).min(units.len());
+    String::from_utf16_lossy(&units[start..end])
 }
 
 pub fn char_substr_from(s: &str, start: usize) -> String {
-    let units: Vec<u16> = s.encode_utf16().skip(start).collect();
-    String::from_utf16_lossy(&units)
+    if s.is_ascii() {
+        if start >= s.len() {
+            return String::new();
+        }
+        return s[start..].to_string();
+    }
+    if is_bmp(s) {
+        return s.chars().skip(start).collect();
+    }
+    let units: Vec<u16> = s.encode_utf16().collect();
+    if start >= units.len() {
+        return String::new();
+    }
+    String::from_utf16_lossy(&units[start..])
 }
 
 /// JS `charAt`: one UTF-16 unit. BMP CJK is a single `char`.
 pub fn char_at(s: &str, i: usize) -> Option<char> {
+    if s.is_ascii() {
+        return s.as_bytes().get(i).copied().map(|b| b as char);
+    }
+    if is_bmp(s) {
+        return s.chars().nth(i);
+    }
     let u = s.encode_utf16().nth(i)?;
     char::decode_utf16(std::iter::once(u)).next()?.ok()
 }
@@ -96,6 +145,23 @@ mod tests {
     fn utf16_len_emoji() {
         assert_eq!(char_len("😀"), 2);
         assert_eq!(char_len("中"), 1);
+    }
+
+    #[test]
+    fn bmp_slice_matches_utf16() {
+        let s = "里面开发abc";
+        assert_eq!(char_slice(s, 0, 2), "里面");
+        assert_eq!(char_slice(s, 2, 2), "开发");
+        assert_eq!(char_substr_from(s, 4), "abc");
+        assert_eq!(char_at(s, 0), Some('里'));
+    }
+
+    #[test]
+    fn ascii_fast_path() {
+        let s = "http://example.com/path";
+        assert_eq!(char_len(s), s.len());
+        assert_eq!(char_slice(s, 0, 7), "http://");
+        assert_eq!(char_at(s, 4), Some(':'));
     }
 
     #[test]

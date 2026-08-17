@@ -62,17 +62,19 @@ impl Tokenizer for UrlTokenizer {
 fn match_url(text: &str) -> Vec<(usize, String)> {
     let chars: Vec<char> = text.chars().collect();
     let n = chars.len();
-    let min_proto = PROTOCOLS.iter().map(|p| p.len()).min().unwrap_or(0);
+    let protocols: Vec<Vec<char>> = PROTOCOLS.iter().map(|p| p.chars().collect()).collect();
+    let min_proto = protocols.iter().map(|p| p.len()).min().unwrap_or(0);
     let mut ret = Vec::new();
     let mut s: Option<usize> = None;
     let mut cur = 0usize;
     while cur < n {
-        if s.is_none() && cur + min_proto < n {
-            let rest: String = chars[cur..].iter().collect();
-            for prot in PROTOCOLS {
-                if rest.starts_with(prot) {
+        if s.is_none() && cur + min_proto <= n {
+            for prot in &protocols {
+                let end = cur + prot.len();
+                if end <= n && chars[cur..end] == prot[..] {
                     s = Some(cur);
-                    cur += prot.chars().count().saturating_sub(1);
+                    // Match JS: advance to last protocol char, then loop +1.
+                    cur = end.saturating_sub(1);
                     break;
                 }
             }
@@ -191,21 +193,45 @@ fn match_stopword(text: &str) -> Vec<(usize, String)> {
     let n = char_len(text);
     let mut ret = Vec::new();
     let mut cur = 0usize;
-    while cur < n {
-        let mut matched: Option<String> = None;
-        for (len, bucket) in STOPWORD2.iter() {
-            let w = char_slice(text, cur, *len);
-            if bucket.contains_key(&w) {
-                matched = Some(w);
-                break;
+    if crate::text::is_bmp(text) {
+        let chars: Vec<char> = text.chars().collect();
+        while cur < n {
+            let mut matched: Option<String> = None;
+            for (len, bucket) in STOPWORD2.iter() {
+                if cur + *len > chars.len() {
+                    continue;
+                }
+                let w: String = chars[cur..cur + *len].iter().collect();
+                if bucket.contains_key(&w) {
+                    matched = Some(w);
+                    break;
+                }
+            }
+            if let Some(w) = matched {
+                let step = char_len(&w);
+                ret.push((cur, w));
+                cur += step;
+            } else {
+                cur += 1;
             }
         }
-        if let Some(w) = matched {
-            let step = char_len(&w);
-            ret.push((cur, w));
-            cur += step;
-        } else {
-            cur += 1;
+    } else {
+        while cur < n {
+            let mut matched: Option<String> = None;
+            for (len, bucket) in STOPWORD2.iter() {
+                let w = char_slice(text, cur, *len);
+                if bucket.contains_key(&w) {
+                    matched = Some(w);
+                    break;
+                }
+            }
+            if let Some(w) = matched {
+                let step = char_len(&w);
+                ret.push((cur, w));
+                cur += step;
+            } else {
+                cur += 1;
+            }
         }
     }
     ret
@@ -407,19 +433,45 @@ impl Tokenizer for DictTokenizer {
 fn match_word(text: &str, mut cur: usize, preword: Option<&Word>, seg: &Segment) -> Vec<Word> {
     let n = char_len(text);
     let mut ret = Vec::new();
-    while cur < n {
-        for (len, bucket) in &seg.table.table2 {
-            let w = char_slice(text, cur, *len);
-            if let Some(e) = bucket.get(&w) {
-                ret.push(Word {
-                    w,
-                    c: Some(cur),
-                    f: Some(e.f),
-                    ..Default::default()
-                });
+    // Pre-materialize units once: char_slice was O(n) per probe and dominated runtime.
+    if crate::text::is_bmp(text) {
+        let chars: Vec<char> = text.chars().collect();
+        while cur < n {
+            for (len, bucket) in &seg.table.table2 {
+                if cur + *len > chars.len() {
+                    continue;
+                }
+                let w: String = chars[cur..cur + *len].iter().collect();
+                if let Some(e) = bucket.get(&w) {
+                    ret.push(Word {
+                        w,
+                        c: Some(cur),
+                        f: Some(e.f),
+                        ..Default::default()
+                    });
+                }
             }
+            cur += 1;
         }
-        cur += 1;
+    } else {
+        let units: Vec<u16> = text.encode_utf16().collect();
+        while cur < n {
+            for (len, bucket) in &seg.table.table2 {
+                if cur + *len > units.len() {
+                    continue;
+                }
+                let w = String::from_utf16_lossy(&units[cur..cur + *len]);
+                if let Some(e) = bucket.get(&w) {
+                    ret.push(Word {
+                        w,
+                        c: Some(cur),
+                        f: Some(e.f),
+                        ..Default::default()
+                    });
+                }
+            }
+            cur += 1;
+        }
     }
     filter_word(ret, preword, text, seg)
 }
