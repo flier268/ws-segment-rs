@@ -1,3 +1,4 @@
-import { default as core } from 'express-serve-static-core';
-declare const app: core.Express;
-export default app;
+import { ChildProcess } from 'child_process';
+export declare function listen(bind?: string): ChildProcess;
+declare const _default: { listen: typeof listen };
+export default _default;

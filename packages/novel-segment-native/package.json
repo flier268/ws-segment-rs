@@ -1,0 +1,11 @@
+{
+  "name": "novel-segment-native",
+  "version": "0.1.0",
+  "description": "Node bindings for the Rust novel-segment core (used by MCP / API / CLI)",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "scripts": {
+    "build": "node ./scripts/copy-addon.js"
+  }
+}

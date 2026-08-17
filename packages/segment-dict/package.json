@@ -51,13 +51,13 @@
     "盘古分词",
     "盤古分詞"
   ],
-  "homepage": "https://github.com/bluelovers/ws-segment/tree/master/packages/segment-dict#readme",
+  "homepage": "https://github.com/flier268/ws-segment-rs/tree/master/packages/segment-dict#readme",
   "bugs": {
-    "url": "https://github.com/bluelovers/ws-segment/issues"
+    "url": "https://github.com/flier268/ws-segment-rs/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bluelovers/ws-segment.git",
+    "url": "git+https://github.com/flier268/ws-segment-rs.git",
     "directory": "packages/segment-dict"
   },
   "license": "ISC",

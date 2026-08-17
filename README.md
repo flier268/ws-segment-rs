@@ -4,6 +4,37 @@
 
     Chinese word segmentation 簡繁中文分词模块 以網路小說為樣本
 
+## Rust crate
+
+其他 Rust 程式請依賴 [`crates/novel-segment`](crates/novel-segment)：
+
+```toml
+[dependencies]
+novel-segment = { path = "crates/novel-segment" }
+```
+
+```rust
+use novel_segment::{DoSegmentOptions, Segment, SegmentOptions};
+
+let mut seg = Segment::new(SegmentOptions { auto_cjk: true, ..Default::default() });
+seg.use_default()?;
+let words = seg.do_segment("这是一个中文分词模块。", DoSegmentOptions::default());
+```
+
+詳見 [crates/novel-segment/README.md](crates/novel-segment/README.md)。
+
+CLI、HTTP API、MCP 在 [crates/novel-segment-cli](crates/novel-segment-cli)：
+
+```bash
+cargo run -p novel-segment-cli -- --text "两个中国" --expected-contains '["两个","中国"]'
+cargo run -p novel-segment-cli -- process --text "我就順便在你臉上涂鴉吧"
+cargo run -p novel-segment-cli -- serve --bind 127.0.0.1:3000
+cargo run -p novel-segment-cli -- mcp
+```
+
+`packages/` 裡的 Node bin 會轉呼叫這個 Rust 二進位。分詞核心已是 Rust；字典資料仍在 `packages/segment-dict`。
+
+
 本模块以**[盘古分词组件](http://pangusegment.codeplex.com/)**中的词库为基础，
 算法设计也部分参考了盘古分词组件中的算法。
 
@@ -44,7 +75,7 @@ https://segment-api.bluelovers.now.sh/?input=从时间上来说是过了数秒�
 
 **歡迎一同來追加字典**
 
-* [segment-dict](https://github.com/bluelovers/ws-segment/tree/master/packages/segment-dict) - dictionary data
+* [segment-dict](https://github.com/flier268/ws-segment-rs/tree/master/packages/segment-dict) - dictionary data
 
 ### TODO
 
@@ -72,7 +103,7 @@ npm install novel-segment
 ```
 
 * npm: [novel-segment](https://www.npmjs.com/package/novel-segment)
-* github: [novel-segment](https://github.com/bluelovers/ws-segment/tree/master/packages/novel-segment)
+* github: [novel-segment](https://github.com/flier268/ws-segment-rs/tree/master/packages/novel-segment)
 
 ## demo
 
@@ -82,8 +113,8 @@ npm install novel-segment
 * 啟用 ZhtSynonymOptimizer 模組
 * 緩存功能
 
-* [demo.glob.ts](https://github.com/bluelovers/ws-segment/tree/master/packages/node-segment/tree/master/test/demo.glob.ts)
-* [demo.cache.ts](https://github.com/bluelovers/ws-segment/tree/master/packages/node-segment/tree/master/test/demo.cache.ts)
+* [demo.glob.ts](https://github.com/flier268/ws-segment-rs/tree/master/packages/node-segment/tree/master/test/demo.glob.ts)
+* [demo.cache.ts](https://github.com/flier268/ws-segment-rs/tree/master/packages/node-segment/tree/master/test/demo.cache.ts)
 
 可搭配其他繁簡轉換程式使用
 
@@ -92,16 +123,16 @@ npm install novel-segment
 ## API
 
 * [API](docs)
-* [其他雜項 Readme](https://github.com/bluelovers/ws-segment/tree/master/packages/novel-segment/tree/master/demo)
-* [Segment.d.ts](https://github.com/bluelovers/ws-segment/tree/master/packages/novel-segment/tree/master/lib/Segment.d.ts)
-* [POSTAG.ts](https://github.com/bluelovers/ws-segment/tree/master/packages/novel-segment/tree/master/lib/POSTAG.ts)
-* [segment-dict](https://github.com/bluelovers/ws-segment/tree/master/packages/segment-dict) - 字典 dictionary data
+* [其他雜項 Readme](https://github.com/flier268/ws-segment-rs/tree/master/packages/novel-segment/tree/master/demo)
+* [Segment.d.ts](https://github.com/flier268/ws-segment-rs/tree/master/packages/novel-segment/tree/master/lib/Segment.d.ts)
+* [POSTAG.ts](https://github.com/flier268/ws-segment-rs/tree/master/packages/novel-segment/tree/master/lib/POSTAG.ts)
+* [segment-dict](https://github.com/flier268/ws-segment-rs/tree/master/packages/segment-dict) - 字典 dictionary data
 
 ### 特點模組
 
-* [ZhtSynonymOptimizer.ts](https://github.com/bluelovers/ws-segment/tree/master/packages/novel-segment/tree/master/lib/submod/ZhtSynonymOptimizer.ts) - 基於語意來修正各種需要人工修正的詞彙 例如 `里后`...等等 (預設不啟用 因為這與分詞無關)
-* [JpSimpleTokenizer.ts](https://github.com/bluelovers/ws-segment/tree/master/packages/novel-segment/tree/master/lib/submod/JpSimpleTokenizer.ts) 簡易的日文切割 (預設啟用)
-* [ForeignOptimizer.ts](https://github.com/bluelovers/ws-segment/tree/master/packages/novel-segment/tree/master/lib/submod/ForeignOptimizer.ts) 合併外文與中文混雜的詞 (預設啟用)
+* [ZhtSynonymOptimizer.ts](https://github.com/flier268/ws-segment-rs/tree/master/packages/novel-segment/tree/master/lib/submod/ZhtSynonymOptimizer.ts) - 基於語意來修正各種需要人工修正的詞彙 例如 `里后`...等等 (預設不啟用 因為這與分詞無關)
+* [JpSimpleTokenizer.ts](https://github.com/flier268/ws-segment-rs/tree/master/packages/novel-segment/tree/master/lib/submod/JpSimpleTokenizer.ts) 簡易的日文切割 (預設啟用)
+* [ForeignOptimizer.ts](https://github.com/flier268/ws-segment-rs/tree/master/packages/novel-segment/tree/master/lib/submod/ForeignOptimizer.ts) 合併外文與中文混雜的詞 (預設啟用)
 
 ## 1、使用方法
 

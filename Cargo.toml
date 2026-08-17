@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/novel-segment",
+    "crates/novel-segment-dict",
+    "crates/novel-segment-napi",
+    "crates/novel-segment-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/flier268/ws-segment-rs"
+rust-version = "1.70"
+
+[workspace.dependencies]
+novel-segment-dict = { path = "crates/novel-segment-dict", version = "0.1.0" }
+novel-segment = { path = "crates/novel-segment", version = "0.1.0" }

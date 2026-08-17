@@ -27,7 +27,6 @@ const tslib_1 = require("tslib");
  */
 const crlf_normalize_1 = tslib_1.__importDefault(require("crlf-normalize"));
 const novel_segment_1 = tslib_1.__importDefault(require("novel-segment"));
-const lib_1 = require("novel-segment/lib");
 const bluebird_1 = tslib_1.__importDefault(require("bluebird"));
 const fs_iconv_1 = require("fs-iconv");
 const cache_1 = tslib_1.__importDefault(require("./lib/cache"));
@@ -37,7 +36,6 @@ const package_json_1 = tslib_1.__importDefault(require("./package.json"));
 const util_2 = require("novel-segment/lib/util");
 const iconv_jschardet_1 = tslib_1.__importDefault(require("iconv-jschardet"));
 const min_1 = require("@lazy-cjk/zh-convert/min");
-const dict_1 = require("novel-segment/lib/defaults/dict");
 const lodash_1 = require("lodash");
 const array_hyper_unique_1 = require("array-hyper-unique");
 /**
@@ -401,11 +399,9 @@ function resetSegment() {
  */
 function getSegment(options) {
     options = fixOptions(options);
-    let { disableCache } = options;
     return bluebird_1.default
         .resolve()
         .then(async function () {
-        await getCacache(options);
         const optionsSegment = {
             autoCjk: true,
             optionsDoSegment: {
@@ -415,96 +411,15 @@ function getSegment(options) {
             ...options.optionsSegment,
         };
         if (!CACHED_SEGMENT) {
-            // 建立新的分詞器實例 / Create new segmenter instance
-            CACHED_SEGMENT = new novel_segment_1.default(optionsSegment);
-            // 載入快取資訊 / Load cache info
-            let _info = await loadCacheInfo(options);
-            // 建立版本資訊物件 / Build version info object
-            let version = {
-                [package_json_1.default.name]: package_json_1.default.version,
-                ...novel_segment_1.default.versions,
-                [package_json_1.default.name]: package_json_1.default.version,
-            };
-            // 載入快取資料庫 / Load cached database
-            let cache_db = await loadCacheDb(options);
-            let _do_init;
-            // 若停用快取則直接初始化 / If cache disabled, initialize directly
-            if (disableCache) {
-                _do_init = true;
-            }
-            // 檢查版本是否變更 / Check if version changed
-            if (typeof _do_init == 'undefined'
-                && _info
-                && _info.current
-                && _info.current[package_json_1.default.name]) {
-                Object.keys(version)
-                    .some(key => {
-                    let bool = _info[key] != version[key];
-                    if (bool) {
-                        util_1.debugConsole.debug(`本次執行的版本與上次緩存的版本不同`);
-                        _do_init = true;
-                    }
-                    return bool;
-                });
-            }
-            // 若有快取字典則載入 / Load cached dictionary if available
-            if (typeof _do_init == 'undefined' && cache_db) {
-                if (cache_db.DICT) {
-                    util_1.debugConsole.debug(`載入緩存字典`);
-                    (0, lib_1.useDefault)(CACHED_SEGMENT, {
-                        ...optionsSegment,
-                        nodict: true,
-                        all_mod: true,
-                    });
-                    CACHED_SEGMENT.DICT = cache_db.DICT;
-                    CACHED_SEGMENT.inited = true;
-                    _do_init = false;
-                }
-            }
-            // 若無快取或需要初始化，則重新載入字典 / If no cache or needs initialization, reload dictionary
-            if (typeof _do_init == 'undefined' || _do_init) {
-                util_1.debugConsole.debug(`重新載入分析字典`);
-                CACHED_SEGMENT.autoInit(optionsSegment);
-                _do_init = true;
-            }
-            else {
-                // 載入黑名單與同義詞 / Load blacklist and synonym
-                (0, dict_1.useDefaultBlacklistDict)(CACHED_SEGMENT, optionsSegment);
-                (0, dict_1.useDefaultSynonymDict)(CACHED_SEGMENT, optionsSegment);
-                CACHED_SEGMENT.doBlacklist();
-            }
-            // 建立字典資料表 / Build dictionary table
-            let db_dict = CACHED_SEGMENT.getDictDatabase('TABLE', true);
-            db_dict.TABLE = CACHED_SEGMENT.DICT['TABLE'];
-            db_dict.TABLE2 = CACHED_SEGMENT.DICT['TABLE2'];
-            db_dict.options.autoCjk = true;
-            let size_db_dict = db_dict.size();
-            // 載入同義詞字典 / Load synonym dictionary
-            CACHED_SEGMENT.loadSynonymDict('synonym', true);
-            let size_segment = Object.keys(CACHED_SEGMENT.getDict('SYNONYM')).length;
-            util_1.debugConsole.debug('主字典總數', size_db_dict);
-            util_1.debugConsole.debug('Synonym', size_segment);
-            // 更新快取資訊 / Update cache info
-            _info.last = Object.assign({}, _info.current);
-            _info.current = {
-                size_db_dict,
-                size_segment,
-                size_db_dict_diff: size_db_dict - (_info.last.size_db_dict || 0),
-                size_segment_diff: size_segment - (_info.last.size_segment || 0),
-                version,
-            };
-            util_1.debugConsole.debug(_info);
-            // 儲存字典快取 / Save dictionary cache
-            if (!disableCache
-                && (_do_init || !cache_db || !cache_db.DICT)) {
-                await CACHED_CACACHE.writeJSON(options.USER_DB_KEY, {
-                    ..._info,
-                    DICT: CACHED_SEGMENT.DICT,
-                });
-                util_1.debugConsole.debug(`緩存字典於 ${options.USER_DB_KEY}`, CACHED_CACACHE.cachePath);
-            }
-            // 釋放記憶體 / Free memory
-            (0, util_1.freeGC)();
+            const { create } = require('../novel-segment-native');
+            CACHED_SEGMENT = create({
+                autoCjk: optionsSegment.autoCjk !== false,
+                allMod: optionsSegment.all_mod !== false,
+                nodeNovelMode: !!(optionsSegment.nodeNovelMode),
+                convertSynonym: optionsSegment.optionsDoSegment?.convertSynonym !== false,
+                optionsDoSegment: optionsSegment.optionsDoSegment,
+            });
+            util_1.debugConsole.debug(`使用 Rust native 分詞核心`);
         }
         return CACHED_SEGMENT;
     });

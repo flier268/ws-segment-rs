@@ -1,25 +1,10 @@
-import { Segment } from './lib/Segment';
-import { POSTAG } from '@novel-segment/postag/lib/postag/ids';
-declare const _Segment: typeof Segment & {
-    version: string;
-    version_dict: string;
-    versions: {
-        "novel-segment": string;
-        "segment-dict": string;
-        "regexp-cjk": string;
-        "cjk-conv": string;
-    };
-    /**
-     * 分词接口
-     */
-    Segment: typeof Segment;
-    /**
-     * 词性接口
-     */
-    POSTAG: typeof POSTAG;
-};
-declare const __Segment: typeof _Segment & {
-    default: typeof _Segment;
-};
-export = __Segment;
-export * from './version';
+import { Segment as NativeSegment, IWord, IOptionsDoSegment } from 'novel-segment-native';
+export { POSTAG } from '@novel-segment/postag/lib/postag/ids';
+export { stringify } from '@novel-segment/stringify';
+
+export const Segment: typeof NativeSegment;
+export default NativeSegment;
+export function useDefault<T>(segment: T): T;
+export function create(options?: ConstructorParameters<typeof NativeSegment>[0]): NativeSegment;
+export function createSegment(options?: ConstructorParameters<typeof NativeSegment>[0]): NativeSegment;
+export type { IWord, IOptionsDoSegment };

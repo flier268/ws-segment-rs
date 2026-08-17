@@ -1,0 +1,18 @@
+[package]
+name = "novel-segment-napi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Node-API bindings for novel-segment (used by MCP / API / CLI)"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+novel-segment = { workspace = true }
+napi = { version = "2.16", default-features = false, features = ["napi4"] }
+napi-derive = "2.16"
+
+[build-dependencies]
+napi-build = "2.1"

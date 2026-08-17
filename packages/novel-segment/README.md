@@ -4,14 +4,10 @@
 
     Chinese word segmentation 簡繁中文分词模块 以網路小說為樣本
 
+分詞核心已遷移至 Rust（`crates/novel-segment`）。本套件是 Node 包裝：`require('novel-segment')` 走 native addon，`dev-segment-cli` / MCP bin 轉呼叫 `novel-segment` 二進位。
+
 本模块以**[盘古分词组件](http://pangusegment.codeplex.com/)**中的词库为基础，
 算法设计也部分参考了盘古分词组件中的算法。
-
-本分词模块具有以下特点：
-
-+ 纯JavaScript编写，可以在任何支持ECMAScript5的引擎上执行（需要稍微修改部分代码）
-+ 基于词性进行联想识别
-+ 可使用JavaScript编写自定义的分词模块
 
 Fork From [leizongmin/segment](https://github.com/leizongmin/node-segment)
 

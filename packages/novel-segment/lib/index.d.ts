@@ -1,10 +1,5 @@
-/**
- * Created by user on 2018/4/16/016.
- */
-import getDefaultModList from './mod';
-import { Segment } from './Segment';
-import { useDefault } from './defaults';
-export { getDefaultModList };
+import { Segment } from 'novel-segment-native';
 export { Segment };
-export { useDefault };
+export function useDefault<T>(segment: T): T;
+export function getDefaultModList(all?: boolean): string[];
 export default Segment;

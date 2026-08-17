@@ -2,13 +2,13 @@
   "name": "@novel-segment/loader-stopword",
   "version": "1.0.31",
   "description": "",
-  "homepage": "https://github.com/bluelovers/ws-segment/tree/master/packages/@novel-segment/loader-stopword#readme",
+  "homepage": "https://github.com/flier268/ws-segment-rs/tree/master/packages/@novel-segment/loader-stopword#readme",
   "bugs": {
-    "url": "https://github.com/bluelovers/ws-segment/issues"
+    "url": "https://github.com/flier268/ws-segment-rs/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bluelovers/ws-segment.git",
+    "url": "git+https://github.com/flier268/ws-segment-rs.git",
     "directory": "packages/@novel-segment/loader-stopword"
   },
   "license": "ISC",

@@ -3,13 +3,13 @@
   "version": "1.0.82",
   "private": true,
   "description": "simple segment api server",
-  "homepage": "https://github.com/bluelovers/ws-segment/tree/master/packages/@novel-segment/api-server#readme",
+  "homepage": "https://github.com/flier268/ws-segment-rs/tree/master/packages/@novel-segment/api-server#readme",
   "bugs": {
-    "url": "https://github.com/bluelovers/ws-segment/issues"
+    "url": "https://github.com/flier268/ws-segment-rs/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bluelovers/ws-segment.git",
+    "url": "git+https://github.com/flier268/ws-segment-rs.git",
     "directory": "packages/@novel-segment/api-server"
   },
   "license": "ISC",
@@ -31,32 +31,13 @@
     "postpublish:commit": "tsx ./script/publish-after2.ts",
     "postpublish:done": "yarn run now-deploy",
     "ncu": "yarn-tool ncu -u",
-    "now-build": "yarn run now-build:install && yarn run now-build:run",
-    "now-build:install": "yarn add novel-segment vercel",
-    "now-build:run": "node ./build.js",
-    "now-deploy": "yarn run now-build:run && ynpx vercel deploy",
+    "start": "node ./index.js",
     "sort-package-json": "yarn-tool sort",
     "tsc:default": "tsc -p tsconfig.json",
     "tsc:esm": "tsc -p tsconfig.esm.json",
     "tsc:showConfig": "ynpx get-current-tsconfig -p"
   },
-  "dependencies": {
-    "@lazy-cjk/zh-convert": "^1.0.55",
-    "cors": "^2.8.6",
-    "crlf-normalize": "^1.0.20",
-    "express": "^4.21.1",
-    "fs-extra": "^11.3.3",
-    "tslib": ">=2"
-  },
-  "devDependencies": {
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/fs-extra": "*"
-  },
-  "peerDependencies": {
-    "novel-segment": "^2.7.121",
-    "vercel": "^37.14.0"
-  },
+  "dependencies": {},
   "engines": {
     "node": ">=10"
   }

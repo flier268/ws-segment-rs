@@ -1,0 +1,20 @@
+[package]
+name = "novel-segment-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CLI, HTTP API, and MCP server for novel-segment"
+readme = "README.md"
+
+[[bin]]
+name = "novel-segment"
+path = "src/main.rs"
+
+[dependencies]
+novel-segment = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tiny_http = "0.12"
+glob = "0.3"
+url = "2"

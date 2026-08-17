@@ -2,13 +2,13 @@
   "name": "novel-segment-cli",
   "version": "1.1.139",
   "description": "cli & lazy version for novel-segment 修正常見簡轉繁時難以處理的字詞",
-  "homepage": "https://github.com/bluelovers/ws-segment/tree/master/packages/novel-segment-cli#readme",
+  "homepage": "https://github.com/flier268/ws-segment-rs/tree/master/packages/novel-segment-cli#readme",
   "bugs": {
-    "url": "https://github.com/bluelovers/ws-segment/issues"
+    "url": "https://github.com/flier268/ws-segment-rs/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bluelovers/ws-segment.git",
+    "url": "git+https://github.com/flier268/ws-segment-rs.git",
     "directory": "packages/novel-segment-cli"
   },
   "license": "ISC",

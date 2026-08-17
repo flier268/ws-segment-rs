@@ -3,13 +3,13 @@
   "version": "1.0.79",
   "private": false,
   "description": "@novel-segment/util",
-  "homepage": "https://github.com/bluelovers/ws-segment/tree/master/packages/novel-segment-util#readme",
+  "homepage": "https://github.com/flier268/ws-segment-rs/tree/master/packages/novel-segment-util#readme",
   "bugs": {
-    "url": "https://github.com/bluelovers/ws-segment/issues"
+    "url": "https://github.com/flier268/ws-segment-rs/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bluelovers/ws-segment.git",
+    "url": "git+https://github.com/flier268/ws-segment-rs.git",
     "directory": "packages/novel-segment-util"
   },
   "license": "ISC",

@@ -52,13 +52,13 @@
     "盤古分詞",
     "簡繁"
   ],
-  "homepage": "https://github.com/bluelovers/ws-segment/tree/master/packages/novel-segment#readme",
+  "homepage": "https://github.com/flier268/ws-segment-rs/tree/master/packages/novel-segment#readme",
   "bugs": {
-    "url": "https://github.com/bluelovers/ws-segment/issues"
+    "url": "https://github.com/flier268/ws-segment-rs/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bluelovers/ws-segment.git",
+    "url": "git+https://github.com/flier268/ws-segment-rs.git",
     "directory": "packages/novel-segment"
   },
   "license": "ISC",
@@ -77,57 +77,20 @@
     "bin": "bin"
   },
   "scripts": {
-    "coverage": "yarn run test -- --coverage",
-    "test": "yarn run local-delete-cache-db && yarn run test-ts && yarn run test-fixme && yarn run test:jest",
-    "test-fixme": "tsx ./test/chk-fixme",
-    "test:jest": "jest",
-    "test:jest:snapshot": "yarn run test:jest -- -u",
-    "test-js": "ynpx ts-mocha \"!(node_modules)/**/*.test.js\"",
-    "test:snapshot": "yarn run test -- -u",
-    "test-ts": "ts-mocha \"!(node_modules)/**/*.test.{ts,tsx}\"",
-    "test:tsd": "ynpx tsd",
-    "build:sort:stringify:cache": "node ./script/sort-stringify-cache.js",
-    "preversion": "git commit -m \"chore: save repo before new version\" ./test/res/ ./test/demo.cache.ts & yarn run test",
-    "version": "echo version",
-    "prepublishOnly": "echo prepublishOnly",
-    "postpublish": "yarn run postpublishOnly:add",
-    "postpublish2": "yarn run build:sort:stringify:cache && node ./script/publish-after2",
-    "postpublish:done": "echo postpublish:done",
-    "postpublishOnly:add": "npx yarn-tool root run postpublishOnly:add novel-segment @novel-segment/api-server",
-    "local-delete-cache-db": "tsx ./test/lib/delete-cache.ts",
-    "local-demo-cache": "ts-node ./test/demo.cache.ts",
-    "local-demo-lazy": "tsx ./test/lib/delete-cache.ts & ts-node ./test/demo.cache.ts",
-    "cli": "tsx ./bin/cli.ts",
+    "test": "cargo test -p novel-segment",
+    "cli": "node ./bin/cli.js",
     "ncu": "yarn-tool ncu -u",
     "sort-package-json": "yarn-tool sort"
   },
   "dependencies": {
-    "@bluelovers/fast-glob": "^3.0.4",
-    "@lazy-cjk/zh-table-list": "^1.0.91",
+    "novel-segment-native": "^0.1.0",
     "@novel-segment/postag": "^1.0.30",
     "@novel-segment/stringify": "^1.0.17",
-    "@novel-segment/table-blacklist": "^1.0.19",
-    "@novel-segment/table-core-abstract": "^1.0.23",
-    "@novel-segment/table-dict": "^1.0.24",
-    "@novel-segment/table-stopword": "^1.0.19",
-    "@novel-segment/table-synonym": "^1.0.19",
     "@novel-segment/types": "^1.0.13",
-    "array-hyper-unique": "^2.1.6",
-    "bluebird": "^3.7.2",
     "cjk-conv": "^1.2.150",
-    "core-decorators": "^0.20.0",
-    "crlf-normalize": "^1.0.20",
-    "deepmerge-plus": "^3.0.2",
     "regexp-cjk": "^3.3.117",
     "segment-dict": "^2.3.210",
-    "sort-object-keys2": "^3.0.7",
-    "ts-enum-util": "4.1.0",
-    "ts-type": "^3.0.1",
-    "tslib": ">=2",
-    "uni-string": "^2.0.7"
-  },
-  "devDependencies": {
-    "@novel-segment/util": "^1.0.79"
+    "sort-object-keys2": "^3.0.7"
   },
   "gitHead": "36b3420066533710322716157492f3c6980f7b99"
 }

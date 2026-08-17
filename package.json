@@ -1,5 +1,5 @@
 {
-  "name": "ws-segment",
+  "name": "ws-segment-rs",
   "version": "1.0.0",
   "private": true,
   "description": "",
@@ -53,13 +53,13 @@
     "盤古分詞",
     "簡繁"
   ],
-  "homepage": "https://github.com/bluelovers/ws-segment#readme",
+  "homepage": "https://github.com/flier268/ws-segment-rs#readme",
   "bugs": {
-    "url": "https://github.com/bluelovers/ws-segment/issues"
+    "url": "https://github.com/flier268/ws-segment-rs/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bluelovers/ws-segment.git"
+    "url": "git+https://github.com/flier268/ws-segment-rs.git"
   },
   "license": "ISC",
   "author": "",
@@ -78,7 +78,7 @@
     "lint:all": "yarn-tool ws run lint --concurrency 1",
     "lint:since": "yarn run lint:all -- --since",
     "pretest": "echo pretest",
-    "test": "yarn workspace novel-segment run test-ts",
+    "test": "cargo test -p novel-segment",
     "test:all": "yarn-tool ws run test --concurrency 1",
     "test:jest:clearCache": "jest --clearCache",
     "test:since": "yarn run test:all -- --since",
@@ -94,7 +94,7 @@
     "ci:install": "yarn add -W lerna yarn-tool cjk-conv ts-node typescript ynpx tsx pnpm",
     "ci:build": "yarn run ci:build:script && yarn run ci:build:commit",
     "ci:build:commit": "tsx ./script/run/ci-build.ts",
-    "ci:build:script": "yarn workspace novel-segment run local-demo-cache",
+    "ci:build:script": "cargo test -p novel-segment",
     "lerna:publish": "yarn run prepublishOnly:root && lerna publish && yarn run postpublishOnly",
     "lerna:publish:yes": "yarn run prepublishOnly:check-bin && yarn run preversion:segment && lerna publish --yes --bump patch --ignore-changes @novel-segment/api-server --loglevel silly && yarn run postpublishOnly",
     "ws:fix-all": "yarn-tool fix-all  --overwriteHostedGitInfo",

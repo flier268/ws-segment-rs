@@ -1,9 +1,9 @@
 {
   "mcpServers": {
     "dev-segment-cli": {
-      "command": "node",
+      "command": "${workspaceFolder}/target/debug/novel-segment",
       "args": [
-        "${workspaceFolder}/packages/novel-segment/bin/cli.js"
+        "mcp"
       ],
       "description": "中文分詞測試 CLI 工具 / Chinese Word Segmentation Test CLI Tool",
       "tools": [
