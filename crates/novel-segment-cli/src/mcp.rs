@@ -7,7 +7,7 @@ use std::io::{self, BufRead, Write};
 const PROTOCOL: &str = "2024-11-05";
 
 pub fn serve() -> io::Result<()> {
-    eprintln!("novel-segment MCP Server started");
+    eprintln!("ws-segment-rs MCP Server started");
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
     loop {
@@ -34,7 +34,7 @@ fn handle(msg: Value) -> Option<Value> {
         "initialize" => json!({
             "protocolVersion": params.get("protocolVersion").and_then(|v| v.as_str()).unwrap_or(PROTOCOL),
             "capabilities": { "tools": {} },
-            "serverInfo": { "name": "novel-segment", "version": env!("CARGO_PKG_VERSION") },
+            "serverInfo": { "name": "ws-segment-rs", "version": env!("CARGO_PKG_VERSION") },
         }),
         "ping" => json!({}),
         "tools/list" => json!({ "tools": tools() }),

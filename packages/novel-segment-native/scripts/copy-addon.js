@@ -14,7 +14,7 @@ const candidates = [
 
 const src = candidates.find((p) => fs.existsSync(p));
 if (!src) {
-  console.error('novel-segment-napi addon not built. Run: cargo build -p novel-segment-napi');
+  console.error('ws-segment-rs-napi addon not built. Run: cargo build -p ws-segment-rs-napi');
   process.exit(1);
 }
 fs.copyFileSync(src, dest);

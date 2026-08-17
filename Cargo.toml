@@ -15,5 +15,5 @@ repository = "https://github.com/flier268/ws-segment-rs"
 rust-version = "1.70"
 
 [workspace.dependencies]
-novel-segment-dict = { path = "crates/novel-segment-dict", version = "0.1.0" }
-novel-segment = { path = "crates/novel-segment", version = "0.1.0" }
+ws-segment-rs-dict = { path = "crates/novel-segment-dict", version = "0.1.0" }
+ws-segment-rs = { path = "crates/novel-segment", version = "0.1.0" }

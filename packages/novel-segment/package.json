@@ -77,7 +77,7 @@
     "bin": "bin"
   },
   "scripts": {
-    "test": "cargo test -p novel-segment",
+    "test": "cargo test -p ws-segment-rs",
     "cli": "node ./bin/cli.js",
     "ncu": "yarn-tool ncu -u",
     "sort-package-json": "yarn-tool sort"

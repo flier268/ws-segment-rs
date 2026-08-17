@@ -1,16 +1,17 @@
 [package]
-name = "novel-segment-napi"
+name = "ws-segment-rs-napi"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Node-API bindings for novel-segment (used by MCP / API / CLI)"
+description = "Node-API bindings for ws-segment-rs"
 
 [lib]
+name = "novel_segment_napi"
 crate-type = ["cdylib"]
 
 [dependencies]
-novel-segment = { workspace = true }
+ws-segment-rs = { workspace = true }
 napi = { version = "2.16", default-features = false, features = ["napi4"] }
 napi-derive = "2.16"
 

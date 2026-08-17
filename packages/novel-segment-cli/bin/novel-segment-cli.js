@@ -5,18 +5,18 @@ const path = require('path');
 
 function rustBin() {
   const candidates = [
-    path.resolve(__dirname, '../../../target/release/novel-segment'),
-    path.resolve(__dirname, '../../../target/debug/novel-segment'),
+    path.resolve(__dirname, '../../../target/release/ws-segment-rs'),
+    path.resolve(__dirname, '../../../target/debug/ws-segment-rs'),
   ];
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
   }
-  return 'novel-segment';
+  return 'ws-segment-rs';
 }
 
 const r = spawnSync(rustBin(), ['process', ...process.argv.slice(2)], { stdio: 'inherit' });
 if (r.error && r.error.code === 'ENOENT') {
-  console.error('novel-segment Rust binary not found. Build with: cargo build -p novel-segment-cli --release');
+  console.error('ws-segment-rs Rust binary not found. Build with: cargo build -p ws-segment-rs-cli --release');
   process.exit(1);
 }
 process.exit(r.status == null ? 1 : r.status);

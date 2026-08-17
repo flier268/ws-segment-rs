@@ -3,7 +3,7 @@
 Node-API 綁定，讓 MCP / API / CLI 繼續用 Node.js，分詞走 Rust 核心。
 
 ```bash
-cargo build -p novel-segment-napi
+cargo build -p ws-segment-rs-napi
 node packages/novel-segment-native/scripts/copy-addon.js
 ```
 

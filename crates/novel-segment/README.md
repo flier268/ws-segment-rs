@@ -1,8 +1,8 @@
-# novel-segment
+# ws-segment-rs
 
 中文分詞函式庫（TypeScript [`novel-segment`](../../packages/novel-segment) 的 Rust 移植）。以盤古分詞詞庫為基礎，並加入網路小說用語。
 
-其他 Rust 程式請只依賴這個 crate。
+crates.io 套件名是 `ws-segment-rs`；Rust 裡仍 `use novel_segment::…`。
 
 ## 引用
 
@@ -10,20 +10,20 @@
 
 ```toml
 [dependencies]
-novel-segment = { path = "../ws-segment-rs/crates/novel-segment" }
+ws-segment-rs = { path = "../ws-segment-rs/crates/novel-segment" }
 ```
 
-Git：
+Git / crates.io：
 
 ```toml
 [dependencies]
-novel-segment = { git = "https://github.com/flier268/ws-segment-rs" }
+ws-segment-rs = "0.1"
 ```
 
 關閉內建字典：
 
 ```toml
-novel-segment = { path = "...", default-features = false }
+ws-segment-rs = { version = "0.1", default-features = false }
 ```
 
 字典根目錄可用環境變數 `NOVEL_SEGMENT_DICT_ROOT` 覆寫（預設為倉庫內 `packages/segment-dict/dict`）。
@@ -61,9 +61,9 @@ fn main() -> Result<(), novel_segment::Error> {
 
 小說長篇語料（`word.novel.test.ts`）請用 `Segment::with_node_novel_default()`：會清空同義詞再載入 `synonym` + `zht.synonym` + `badword.synonym` + `zht.common.synonym`。
 
-CLI / HTTP API / MCP 見 [crates/novel-segment-cli](../novel-segment-cli)。Node 若要直接 `require`，可建 `novel-segment-napi`：
+CLI / HTTP API / MCP 見 [crates/novel-segment-cli](../novel-segment-cli)（crate：`ws-segment-rs-cli`）。Node 若要直接 `require`，可建 `ws-segment-rs-napi`：
 
 ```bash
-cargo build -p novel-segment-napi
+cargo build -p ws-segment-rs-napi
 node packages/novel-segment-native/scripts/copy-addon.js
 ```

@@ -1,5 +1,5 @@
 [package]
-name = "novel-segment"
+name = "ws-segment-rs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,12 +9,15 @@ readme = "README.md"
 keywords = ["chinese", "segmentation", "nlp", "tokenizer", "cjk"]
 categories = ["text-processing"]
 
+[lib]
+name = "novel_segment"
+
 [features]
 default = ["default-dict"]
-default-dict = ["dep:novel-segment-dict"]
+default-dict = ["dep:ws-segment-rs-dict"]
 
 [dependencies]
-novel-segment-dict = { workspace = true, optional = true }
+ws-segment-rs-dict = { workspace = true, optional = true }
 regex = "1"
 once_cell = "1"
 serde = { version = "1", features = ["derive"] }

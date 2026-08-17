@@ -9,13 +9,13 @@ const path = require('path');
 
 function rustBin() {
   const candidates = [
-    path.resolve(__dirname, '../../../target/release/novel-segment'),
-    path.resolve(__dirname, '../../../target/debug/novel-segment'),
+    path.resolve(__dirname, '../../../target/release/ws-segment-rs'),
+    path.resolve(__dirname, '../../../target/debug/ws-segment-rs'),
   ];
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
   }
-  return 'novel-segment';
+  return 'ws-segment-rs';
 }
 
 function listen(bind) {
@@ -24,7 +24,7 @@ function listen(bind) {
   });
   child.on('error', (e) => {
     console.error(e.message);
-    console.error('Build with: cargo build -p novel-segment-cli --release');
+    console.error('Build with: cargo build -p ws-segment-rs-cli --release');
     process.exit(1);
   });
   return child;

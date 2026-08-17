@@ -1,15 +1,15 @@
-# novel-segment-cli
+# ws-segment-rs-cli
 
-Rust 版 CLI、HTTP API、MCP。分詞走 [`novel-segment`](../novel-segment) crate。
+Rust 版 CLI、HTTP API、MCP。分詞走 [`ws-segment-rs`](../novel-segment) crate。
 
 ```bash
-cargo run -p novel-segment-cli -- --text "这是一个中文分词模块。" --output text
-cargo run -p novel-segment-cli -- process --text "我就順便在你臉上涂鴉吧"
-cargo run -p novel-segment-cli -- serve --bind 127.0.0.1:3000
-cargo run -p novel-segment-cli -- mcp
+cargo run -p ws-segment-rs-cli -- --text "这是一个中文分词模块。" --output text
+cargo run -p ws-segment-rs-cli -- process --text "我就順便在你臉上涂鴉吧"
+cargo run -p ws-segment-rs-cli -- serve --bind 127.0.0.1:3000
+cargo run -p ws-segment-rs-cli -- mcp
 ```
 
-編譯後的二進位是 `target/debug/novel-segment`（或 `release`）。
+編譯後的二進位是 `target/debug/ws-segment-rs`（或 `release`）。
 
 ## MCP
 

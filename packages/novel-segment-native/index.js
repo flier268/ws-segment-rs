@@ -17,7 +17,7 @@ function resolveAddon() {
     }
   }
   throw new Error(
-    'novel-segment native addon not found. Build with: cargo build -p novel-segment-napi && node packages/novel-segment-native/scripts/copy-addon.js'
+    'novel-segment native addon not found. Build with: cargo build -p ws-segment-rs-napi && node packages/novel-segment-native/scripts/copy-addon.js'
   );
 }
 

@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "dev-segment-cli": {
-      "command": "${workspaceFolder}/target/debug/novel-segment",
+      "command": "${workspaceFolder}/target/debug/ws-segment-rs",
       "args": [
         "mcp"
       ],

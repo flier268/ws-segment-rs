@@ -282,46 +282,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "novel-segment"
-version = "0.1.0"
-dependencies = [
- "novel-segment-dict",
- "once_cell",
- "regex",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "novel-segment-cli"
-version = "0.1.0"
-dependencies = [
- "glob",
- "novel-segment",
- "serde",
- "serde_json",
- "tiny_http",
- "url",
-]
-
-[[package]]
-name = "novel-segment-dict"
-version = "0.1.0"
-dependencies = [
- "serde_json",
-]
-
-[[package]]
-name = "novel-segment-napi"
-version = "0.1.0"
-dependencies = [
- "napi",
- "napi-build",
- "napi-derive",
- "novel-segment",
-]
-
-[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -546,6 +506,46 @@ name = "writeable"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
+
+[[package]]
+name = "ws-segment-rs"
+version = "0.1.0"
+dependencies = [
+ "once_cell",
+ "regex",
+ "serde",
+ "serde_json",
+ "ws-segment-rs-dict",
+]
+
+[[package]]
+name = "ws-segment-rs-cli"
+version = "0.1.0"
+dependencies = [
+ "glob",
+ "serde",
+ "serde_json",
+ "tiny_http",
+ "url",
+ "ws-segment-rs",
+]
+
+[[package]]
+name = "ws-segment-rs-dict"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "ws-segment-rs-napi"
+version = "0.1.0"
+dependencies = [
+ "napi",
+ "napi-build",
+ "napi-derive",
+ "ws-segment-rs",
+]
 
 [[package]]
 name = "yoke"

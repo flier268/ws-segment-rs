@@ -10,7 +10,7 @@
 
 ```toml
 [dependencies]
-novel-segment = { path = "crates/novel-segment" }
+ws-segment-rs = { path = "crates/novel-segment" }
 ```
 
 ```rust
@@ -26,10 +26,10 @@ let words = seg.do_segment("这是一个中文分词模块。", DoSegmentOptions
 CLI、HTTP API、MCP 在 [crates/novel-segment-cli](crates/novel-segment-cli)：
 
 ```bash
-cargo run -p novel-segment-cli -- --text "两个中国" --expected-contains '["两个","中国"]'
-cargo run -p novel-segment-cli -- process --text "我就順便在你臉上涂鴉吧"
-cargo run -p novel-segment-cli -- serve --bind 127.0.0.1:3000
-cargo run -p novel-segment-cli -- mcp
+cargo run -p ws-segment-rs-cli -- --text "两个中国" --expected-contains '["两个","中国"]'
+cargo run -p ws-segment-rs-cli -- process --text "我就順便在你臉上涂鴉吧"
+cargo run -p ws-segment-rs-cli -- serve --bind 127.0.0.1:3000
+cargo run -p ws-segment-rs-cli -- mcp
 ```
 
 `packages/` 裡的 Node bin 會轉呼叫這個 Rust 二進位。分詞核心已是 Rust；字典資料仍在 `packages/segment-dict`。

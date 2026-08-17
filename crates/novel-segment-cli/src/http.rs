@@ -10,7 +10,7 @@ use url::Url;
 pub fn serve(bind: &str) -> Result<(), String> {
     let _ = segment_words("", SegmentMode::Novel, DoSegmentOptions::default());
     let server = Server::http(bind).map_err(|e| e.to_string())?;
-    eprintln!("novel-segment API listening on http://{bind}");
+    eprintln!("ws-segment-rs API listening on http://{bind}");
     for request in server.incoming_requests() {
         eprintln!("incoming {} {}", request.method(), request.url());
         match handle(request) {

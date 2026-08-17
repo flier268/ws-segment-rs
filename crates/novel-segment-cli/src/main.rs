@@ -325,13 +325,13 @@ fn flag_value(args: &[String], name: &str) -> Option<String> {
 fn print_help() {
     println!(
         "\
-novel-segment — Chinese word segmentation (CLI / API / MCP)
+ws-segment-rs — Chinese word segmentation (CLI / API / MCP)
 
 Usage:
-  novel-segment [--text|-t <text>] [--file|-f <path>] [text]
-  novel-segment process [options]
-  novel-segment serve [--bind HOST:PORT]
-  novel-segment mcp
+  ws-segment-rs [--text|-t <text>] [--file|-f <path>] [text]
+  ws-segment-rs process [options]
+  ws-segment-rs serve [--bind HOST:PORT]
+  ws-segment-rs mcp
 
 Test options (dev-segment-cli):
   -t, --text <text>           Text to segment
@@ -357,7 +357,7 @@ Test options (dev-segment-cli):
 fn print_process_help() {
     println!(
         "\
-novel-segment process — rewrite files with synonym conversion
+ws-segment-rs process — rewrite files with synonym conversion
 
   -t, --text <text>           Process text and print
   -f, --file <path>           File to rewrite (repeatable)

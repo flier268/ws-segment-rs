@@ -4,7 +4,7 @@
 //! Other Rust programs should depend on this crate only:
 //!
 //! ```toml
-//! novel-segment = { path = "../ws-segment-rs/crates/novel-segment" }
+//! ws-segment-rs = { path = "../ws-segment-rs/crates/novel-segment" }
 //! ```
 //!
 //! ```rust,no_run

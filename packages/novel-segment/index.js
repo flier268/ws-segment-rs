@@ -17,7 +17,7 @@ try {
 
 const Segment = native ? native.Segment : function MissingNative() {
   throw new Error(
-    'novel-segment JS core has been removed. Build the Rust CLI (`cargo build -p novel-segment-cli`) or the native addon (`cargo build -p novel-segment-napi`).'
+    'novel-segment JS core has been removed. Build the Rust CLI (`cargo build -p ws-segment-rs-cli`) or the native addon (`cargo build -p ws-segment-rs-napi`).'
   );
 };
 

@@ -3,7 +3,7 @@
 分詞 MCP 已改為 Rust 二進位 `novel-segment mcp`（crate：`novel-segment-cli`）。
 
 ```bash
-cargo build -p novel-segment-cli --release
+cargo build -p ws-segment-rs-cli --release
 ```
 
 ## Claude Desktop / 其他客戶端
@@ -12,7 +12,7 @@ cargo build -p novel-segment-cli --release
 {
   "mcpServers": {
     "novel-segment": {
-      "command": "/absolute/path/to/target/release/novel-segment",
+      "command": "/absolute/path/to/target/release/ws-segment-rs",
       "args": ["mcp"]
     }
   }
