@@ -509,7 +509,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "ws-segment-rs"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "once_cell",
  "regex",
@@ -520,7 +520,7 @@ dependencies = [
 
 [[package]]
 name = "ws-segment-rs-cli"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "glob",
  "serde",
@@ -532,14 +532,14 @@ dependencies = [
 
 [[package]]
 name = "ws-segment-rs-dict"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "ws-segment-rs-napi"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "napi",
  "napi-build",

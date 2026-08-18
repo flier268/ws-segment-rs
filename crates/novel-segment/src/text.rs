@@ -61,6 +61,28 @@ pub fn char_substr_from(s: &str, start: usize) -> String {
     String::from_utf16_lossy(&units[start..])
 }
 
+/// Slice already-materialized BMP code points (1:1 with UTF-16 units).
+#[inline]
+pub fn slice_chars(chars: &[char], start: usize, len: usize) -> Option<String> {
+    let end = start.checked_add(len)?;
+    if end > chars.len() {
+        None
+    } else {
+        Some(chars[start..end].iter().collect())
+    }
+}
+
+/// Slice already-materialized UTF-16 units.
+#[inline]
+pub fn slice_utf16(units: &[u16], start: usize, len: usize) -> Option<String> {
+    let end = start.checked_add(len)?;
+    if end > units.len() {
+        None
+    } else {
+        Some(String::from_utf16_lossy(&units[start..end]))
+    }
+}
+
 /// JS `charAt`: one UTF-16 unit. BMP CJK is a single `char`.
 pub fn char_at(s: &str, i: usize) -> Option<char> {
     if s.is_ascii() {
@@ -154,6 +176,8 @@ mod tests {
         assert_eq!(char_slice(s, 2, 2), "开发");
         assert_eq!(char_substr_from(s, 4), "abc");
         assert_eq!(char_at(s, 0), Some('里'));
+        let chars: Vec<char> = s.chars().collect();
+        assert_eq!(slice_chars(&chars, 0, 2).as_deref(), Some("里面"));
     }
 
     #[test]
@@ -162,6 +186,26 @@ mod tests {
         assert_eq!(char_len(s), s.len());
         assert_eq!(char_slice(s, 0, 7), "http://");
         assert_eq!(char_at(s, 4), Some(':'));
+    }
+
+    #[test]
+    fn is_bmp_detects_non_bmp() {
+        assert!(is_bmp(""));
+        assert!(is_bmp("里面abc"));
+        assert!(!is_bmp("😀"));
+    }
+
+    #[test]
+    fn non_bmp_slice_uses_utf16_units() {
+        let s = "😀a";
+        assert_eq!(char_len(s), 3);
+        assert_eq!(char_slice(s, 0, 2), "😀");
+        assert_eq!(char_slice(s, 2, 1), "a");
+        assert_eq!(char_substr_from(s, 2), "a");
+        assert_eq!(
+            slice_utf16(&s.encode_utf16().collect::<Vec<_>>(), 0, 2).as_deref(),
+            Some("😀")
+        );
     }
 
     #[test]

@@ -10,7 +10,9 @@ use crate::pipeline::{
 use crate::postag::POSTAG;
 use crate::segment::Segment;
 use crate::stopword::STOPWORD2;
-use crate::text::{char_at, char_len, char_slice, char_substr_from, leading_repeat_run};
+use crate::text::{
+    char_at, char_len, char_slice, char_substr_from, leading_repeat_run, slice_chars, slice_utf16,
+};
 use crate::word::Word;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -34,6 +36,9 @@ pub fn builtin_tokenizers() -> Vec<Box<dyn Tokenizer>> {
 // ---------------------------------------------------------------------------
 
 const PROTOCOLS: &[&str] = &["http://", "https://", "ftp://", "news://", "telnet://"];
+
+static PROTOCOL_UNITS: Lazy<Vec<Vec<char>>> =
+    Lazy::new(|| PROTOCOLS.iter().map(|p| p.chars().collect()).collect());
 
 static URL_CHARS: Lazy<HashSet<char>> = Lazy::new(|| {
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$%&‘()*+,-./:;=?@[\\]^_`|~"
@@ -62,18 +67,18 @@ impl Tokenizer for UrlTokenizer {
 fn match_url(text: &str) -> Vec<(usize, String)> {
     let chars: Vec<char> = text.chars().collect();
     let n = chars.len();
-    let protocols: Vec<Vec<char>> = PROTOCOLS.iter().map(|p| p.chars().collect()).collect();
-    let min_proto = protocols.iter().map(|p| p.len()).min().unwrap_or(0);
+    let min_proto = PROTOCOL_UNITS.iter().map(|p| p.len()).min().unwrap_or(0);
     let mut ret = Vec::new();
     let mut s: Option<usize> = None;
     let mut cur = 0usize;
     while cur < n {
-        if s.is_none() && cur + min_proto <= n {
-            for prot in &protocols {
+        // JS: `cur < text.length - MIN_PROTOTAL_LEN` (remaining must exceed shortest protocol).
+        if s.is_none() && cur + min_proto < n {
+            for prot in PROTOCOL_UNITS.iter() {
                 let end = cur + prot.len();
                 if end <= n && chars[cur..end] == prot[..] {
                     s = Some(cur);
-                    // Match JS: advance to last protocol char, then loop +1.
+                    // JS loop increments after the last protocol char.
                     cur = end.saturating_sub(1);
                     break;
                 }
@@ -196,17 +201,10 @@ fn match_stopword(text: &str) -> Vec<(usize, String)> {
     if crate::text::is_bmp(text) {
         let chars: Vec<char> = text.chars().collect();
         while cur < n {
-            let mut matched: Option<String> = None;
-            for (len, bucket) in STOPWORD2.iter() {
-                if cur + *len > chars.len() {
-                    continue;
-                }
-                let w: String = chars[cur..cur + *len].iter().collect();
-                if bucket.contains_key(&w) {
-                    matched = Some(w);
-                    break;
-                }
-            }
+            let matched = STOPWORD2.iter().find_map(|(len, bucket)| {
+                let w = slice_chars(&chars, cur, *len)?;
+                bucket.contains_key(&w).then_some(w)
+            });
             if let Some(w) = matched {
                 let step = char_len(&w);
                 ret.push((cur, w));
@@ -216,15 +214,12 @@ fn match_stopword(text: &str) -> Vec<(usize, String)> {
             }
         }
     } else {
+        let units: Vec<u16> = text.encode_utf16().collect();
         while cur < n {
-            let mut matched: Option<String> = None;
-            for (len, bucket) in STOPWORD2.iter() {
-                let w = char_slice(text, cur, *len);
-                if bucket.contains_key(&w) {
-                    matched = Some(w);
-                    break;
-                }
-            }
+            let matched = STOPWORD2.iter().find_map(|(len, bucket)| {
+                let w = slice_utf16(&units, cur, *len)?;
+                bucket.contains_key(&w).then_some(w)
+            });
             if let Some(w) = matched {
                 let step = char_len(&w);
                 ret.push((cur, w));
@@ -433,22 +428,19 @@ impl Tokenizer for DictTokenizer {
 fn match_word(text: &str, mut cur: usize, preword: Option<&Word>, seg: &Segment) -> Vec<Word> {
     let n = char_len(text);
     let mut ret = Vec::new();
-    // Pre-materialize units once: char_slice was O(n) per probe and dominated runtime.
     if crate::text::is_bmp(text) {
         let chars: Vec<char> = text.chars().collect();
         while cur < n {
             for (len, bucket) in &seg.table.table2 {
-                if cur + *len > chars.len() {
-                    continue;
-                }
-                let w: String = chars[cur..cur + *len].iter().collect();
-                if let Some(e) = bucket.get(&w) {
-                    ret.push(Word {
-                        w,
-                        c: Some(cur),
-                        f: Some(e.f),
-                        ..Default::default()
-                    });
+                if let Some(w) = slice_chars(&chars, cur, *len) {
+                    if let Some(e) = bucket.get(&w) {
+                        ret.push(Word {
+                            w,
+                            c: Some(cur),
+                            f: Some(e.f),
+                            ..Default::default()
+                        });
+                    }
                 }
             }
             cur += 1;
@@ -457,17 +449,15 @@ fn match_word(text: &str, mut cur: usize, preword: Option<&Word>, seg: &Segment)
         let units: Vec<u16> = text.encode_utf16().collect();
         while cur < n {
             for (len, bucket) in &seg.table.table2 {
-                if cur + *len > units.len() {
-                    continue;
-                }
-                let w = String::from_utf16_lossy(&units[cur..cur + *len]);
-                if let Some(e) = bucket.get(&w) {
-                    ret.push(Word {
-                        w,
-                        c: Some(cur),
-                        f: Some(e.f),
-                        ..Default::default()
-                    });
+                if let Some(w) = slice_utf16(&units, cur, *len) {
+                    if let Some(e) = bucket.get(&w) {
+                        ret.push(Word {
+                            w,
+                            c: Some(cur),
+                            f: Some(e.f),
+                            ..Default::default()
+                        });
+                    }
                 }
             }
             cur += 1;
@@ -985,5 +975,25 @@ fn split_zhuyin(text: &str) -> Option<Vec<Word>> {
         None
     } else {
         Some(ret)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn url_requires_remaining_longer_than_shortest_protocol() {
+        // `ftp://` is 6 units; JS only searches when remaining length > 6.
+        assert!(match_url("ftp://").is_empty());
+        assert!(match_url("xftp://").is_empty());
+        assert!(match_url("见ftp://").is_empty());
+        assert_eq!(match_url("ftp://x"), vec![(0, "ftp://x".into())]);
+        assert_eq!(match_url("http://"), vec![(0, "http://".into())]);
+        assert_eq!(match_url("见ftp://x"), vec![(1, "ftp://x".into())]);
+        assert_eq!(
+            match_url("主页http://ucdok.com娃"),
+            vec![(2, "http://ucdok.com".into())]
+        );
     }
 }
