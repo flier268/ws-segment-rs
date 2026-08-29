@@ -51,6 +51,10 @@ fn replace_shen(s: &str) -> String {
     RE.replace_all(s, "參$1").into_owned()
 }
 
+static RE_FA_SUFFIX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(.+)[发發]$").unwrap());
+static RE_YU_SUFFIX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(.+)余$").unwrap());
+static RE_LI_SUFFIX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(.)里$").unwrap());
+
 pub struct ZhtSynonymOptimizer;
 
 impl Optimizer for ZhtSynonymOptimizer {
@@ -65,7 +69,11 @@ impl Optimizer for ZhtSynonymOptimizer {
                 i += 1;
                 continue;
             }
-            let w0 = if i > 0 { Some(words[i - 1].clone()) } else { None };
+            let w0 = if i > 0 {
+                Some(words[i - 1].clone())
+            } else {
+                None
+            };
             let w2 = words.get(i + 1).cloned();
             let w1_len = char_len(&words[i].w);
             let mut bool_ok = false;
@@ -74,12 +82,31 @@ impl Optimizer for ZhtSynonymOptimizer {
             if w1_len == 1 {
                 let w = words[i].w.clone();
                 if w == "里" {
-                    if w0.as_ref().map(|p| p.w.ends_with('的') || p.w == "和").unwrap_or(false) {
+                    if w0
+                        .as_ref()
+                        .map(|p| p.w.ends_with('的') || p.w == "和")
+                        .unwrap_or(false)
+                    {
                         // keep
-                    } else if w0.as_ref().map(|p| CLOSE_P.contains(&p.w.as_str())).unwrap_or(false)
-                        || w0.as_ref().map(|p| {
-                            hex_and_any(p.pos(), &[POSTAG::D_N, POSTAG::D_S, POSTAG::D_F, POSTAG::D_T, POSTAG::D_V])
-                        }).unwrap_or(false)
+                    } else if w0
+                        .as_ref()
+                        .map(|p| CLOSE_P.contains(&p.w.as_str()))
+                        .unwrap_or(false)
+                        || w0
+                            .as_ref()
+                            .map(|p| {
+                                hex_and_any(
+                                    p.pos(),
+                                    &[
+                                        POSTAG::D_N,
+                                        POSTAG::D_S,
+                                        POSTAG::D_F,
+                                        POSTAG::D_T,
+                                        POSTAG::D_V,
+                                    ],
+                                )
+                            })
+                            .unwrap_or(false)
                     {
                         words[i].ow = Some(std::mem::replace(&mut words[i].w, "裡".into()));
                         bool_ok = true;
@@ -87,34 +114,49 @@ impl Optimizer for ZhtSynonymOptimizer {
                 } else if w == "后" {
                     if w0.as_ref().map(|p| p.w == "和").unwrap_or(false) {
                         // keep
-                    } else if w0.as_ref().map(|p| CLOSE_P.contains(&p.w.as_str())).unwrap_or(false)
+                    } else if w0
+                        .as_ref()
+                        .map(|p| CLOSE_P.contains(&p.w.as_str()))
+                        .unwrap_or(false)
                         || w0.as_ref().map(|p| p.w == "腰").unwrap_or(false)
-                        || w0.as_ref().map(|p| {
-                            p.p.is_some()
-                                && p.pos() != 0
-                                && hex_and_any(
-                                    p.pos(),
-                                    &[
-                                        POSTAG::D_V,
-                                        POSTAG::D_S,
-                                        POSTAG::D_T,
-                                        POSTAG::D_N,
-                                        POSTAG::D_MQ,
-                                        POSTAG::A_M,
-                                        POSTAG::D_F,
-                                        POSTAG::D_D,
-                                        POSTAG::D_R,
-                                    ],
-                                )
-                        }).unwrap_or(false)
-                        || w2.as_ref().map(|n| n.p.is_some() && hex_and_any(n.pos(), &[POSTAG::D_V])).unwrap_or(false)
+                        || w0
+                            .as_ref()
+                            .map(|p| {
+                                p.p.is_some()
+                                    && p.pos() != 0
+                                    && hex_and_any(
+                                        p.pos(),
+                                        &[
+                                            POSTAG::D_V,
+                                            POSTAG::D_S,
+                                            POSTAG::D_T,
+                                            POSTAG::D_N,
+                                            POSTAG::D_MQ,
+                                            POSTAG::A_M,
+                                            POSTAG::D_F,
+                                            POSTAG::D_D,
+                                            POSTAG::D_R,
+                                        ],
+                                    )
+                            })
+                            .unwrap_or(false)
+                        || w2
+                            .as_ref()
+                            .map(|n| n.p.is_some() && hex_and_any(n.pos(), &[POSTAG::D_V]))
+                            .unwrap_or(false)
                         || (w2.is_some()
                             && w0.is_some()
                             && w0.as_ref().unwrap().pos_falsy()
-                            && w2.as_ref().map(|n| n.p.is_some() && hex_and_any(n.pos(), &[POSTAG::D_D])).unwrap_or(false))
+                            && w2
+                                .as_ref()
+                                .map(|n| n.p.is_some() && hex_and_any(n.pos(), &[POSTAG::D_D]))
+                                .unwrap_or(false))
                         || (w2.is_some()
                             && w0.as_ref().map(|p| p.pos_falsy()).unwrap_or(true)
-                            && w2.as_ref().map(|n| SEP_P.contains(&n.w.as_str())).unwrap_or(false))
+                            && w2
+                                .as_ref()
+                                .map(|n| SEP_P.contains(&n.w.as_str()))
+                                .unwrap_or(false))
                     {
                         words[i].ow = Some(std::mem::replace(&mut words[i].w, "後".into()));
                         bool_ok = true;
@@ -130,66 +172,128 @@ impl Optimizer for ZhtSynonymOptimizer {
                             }
                         }
                     }
-                    if !bool_ok && words[i].w == "发" && w2.as_ref().map(|n| n.w == "的").unwrap_or(false) {
-                        words[i].ow = Some(std::mem::replace(&mut words[i].w, "發".into()));
-                        bool_ok = true;
-                    }
                     if !bool_ok
                         && words[i].w == "发"
-                        && w0.as_ref().map(|p| p.pos() & POSTAG::D_R != 0).unwrap_or(false)
-                        && w2.as_ref().map(|n| n.pos() & POSTAG::D_R != 0).unwrap_or(false)
+                        && w2.as_ref().map(|n| n.w == "的").unwrap_or(false)
                     {
                         words[i].ow = Some(std::mem::replace(&mut words[i].w, "發".into()));
                         bool_ok = true;
                     }
                     if !bool_ok
                         && words[i].w == "发"
-                        && w2.as_ref().map(|n| n.w == "那麼" || n.w == "那么").unwrap_or(false)
+                        && w0
+                            .as_ref()
+                            .map(|p| p.pos() & POSTAG::D_R != 0)
+                            .unwrap_or(false)
+                        && w2
+                            .as_ref()
+                            .map(|n| n.pos() & POSTAG::D_R != 0)
+                            .unwrap_or(false)
+                    {
+                        words[i].ow = Some(std::mem::replace(&mut words[i].w, "發".into()));
+                        bool_ok = true;
+                    }
+                    if !bool_ok
+                        && words[i].w == "发"
+                        && w2
+                            .as_ref()
+                            .map(|n| n.w == "那麼" || n.w == "那么")
+                            .unwrap_or(false)
                     {
                         words[i].ow = Some(std::mem::replace(&mut words[i].w, "發".into()));
                         bool_ok = true;
                     }
                 } else if w == "于" {
-                    let start_ok = w0.as_ref().map(|p| p.pos() & POSTAG::D_W != 0).unwrap_or(true);
+                    let start_ok = w0
+                        .as_ref()
+                        .map(|p| p.pos() & POSTAG::D_W != 0)
+                        .unwrap_or(true);
                     if start_ok
-                        && w2.as_ref().map(|n| {
-                            n.p.is_some()
-                                && n.pos() != 0
-                                && hex_and_any(
-                                    n.pos(),
-                                    &[
-                                        POSTAG::D_N,
-                                        POSTAG::D_V,
-                                        POSTAG::D_R,
-                                        POSTAG::D_D,
-                                        POSTAG::D_T,
-                                        POSTAG::A_NR,
-                                        POSTAG::D_S,
-                                        POSTAG::D_F,
-                                    ],
-                                )
-                        }).unwrap_or(false)
+                        && w2
+                            .as_ref()
+                            .map(|n| {
+                                n.p.is_some()
+                                    && n.pos() != 0
+                                    && hex_and_any(
+                                        n.pos(),
+                                        &[
+                                            POSTAG::D_N,
+                                            POSTAG::D_V,
+                                            POSTAG::D_R,
+                                            POSTAG::D_D,
+                                            POSTAG::D_T,
+                                            POSTAG::A_NR,
+                                            POSTAG::D_S,
+                                            POSTAG::D_F,
+                                        ],
+                                    )
+                            })
+                            .unwrap_or(false)
                     {
                         words[i].ow = Some(std::mem::replace(&mut words[i].w, "於".into()));
                         new_p = Some(POSTAG::D_P);
                         words[i].p = new_p;
                         bool_ok = true;
                     } else if let (Some(prev), Some(next)) = (&w0, &w2) {
-                        let cond = (hex_and_any(prev.pos(), &[POSTAG::D_V, POSTAG::D_R, POSTAG::D_A, POSTAG::D_T, POSTAG::D_F])
-                            && hex_and_any(next.pos(), &[POSTAG::D_N, POSTAG::D_V, POSTAG::D_R, POSTAG::D_S, POSTAG::A_NX, POSTAG::D_F, POSTAG::D_W]))
-                            || (hex_and_any(prev.pos(), &[POSTAG::D_N]) && hex_and_any(next.pos(), &[POSTAG::D_N]))
+                        let cond = (hex_and_any(
+                            prev.pos(),
+                            &[
+                                POSTAG::D_V,
+                                POSTAG::D_R,
+                                POSTAG::D_A,
+                                POSTAG::D_T,
+                                POSTAG::D_F,
+                            ],
+                        ) && hex_and_any(
+                            next.pos(),
+                            &[
+                                POSTAG::D_N,
+                                POSTAG::D_V,
+                                POSTAG::D_R,
+                                POSTAG::D_S,
+                                POSTAG::A_NX,
+                                POSTAG::D_F,
+                                POSTAG::D_W,
+                            ],
+                        )) || (hex_and_any(prev.pos(), &[POSTAG::D_N])
+                            && hex_and_any(next.pos(), &[POSTAG::D_N]))
                             || (hex_and_any(prev.pos(), &[POSTAG::D_V, POSTAG::D_N])
-                                && hex_and_any(next.pos(), &[POSTAG::D_F, POSTAG::D_T, POSTAG::A_NR, POSTAG::D_R, POSTAG::D_S, POSTAG::D_W]))
+                                && hex_and_any(
+                                    next.pos(),
+                                    &[
+                                        POSTAG::D_F,
+                                        POSTAG::D_T,
+                                        POSTAG::A_NR,
+                                        POSTAG::D_R,
+                                        POSTAG::D_S,
+                                        POSTAG::D_W,
+                                    ],
+                                ))
                             || (hex_and_any(prev.pos(), &[POSTAG::A_NS, POSTAG::D_T, POSTAG::D_C])
                                 && hex_and_any(next.pos(), &[POSTAG::A_NS, POSTAG::D_T]))
-                            || (hex_and_any(prev.pos(), &[POSTAG::D_D]) && hex_and_any(next.pos(), &[POSTAG::D_N]))
+                            || (hex_and_any(prev.pos(), &[POSTAG::D_D])
+                                && hex_and_any(next.pos(), &[POSTAG::D_N]))
                             || (hex_and_any(prev.pos(), &[POSTAG::A_NR])
-                                && hex_and_any(next.pos(), &[POSTAG::A_NS, POSTAG::A_NT, POSTAG::D_S, POSTAG::D_N, POSTAG::D_V]))
-                            || (hex_and_any(prev.pos(), &[POSTAG::D_V]) && hex_and_any(next.pos(), &[POSTAG::D_W]))
-                            || (hex_and_any(prev.pos(), &[POSTAG::D_D]) && hex_and_any(next.pos(), &[POSTAG::D_V]))
-                            || (hex_and_any(prev.pos(), &[POSTAG::D_V]) && hex_and_any(next.pos(), &[POSTAG::D_D]))
-                            || (hex_and_any(prev.pos(), &[POSTAG::D_N]) && hex_and_any(next.pos(), &[POSTAG::D_V]))
-                            || (hex_and_any(prev.pos(), &[POSTAG::D_D]) && hex_and_any(next.pos(), &[POSTAG::D_F]));
+                                && hex_and_any(
+                                    next.pos(),
+                                    &[
+                                        POSTAG::A_NS,
+                                        POSTAG::A_NT,
+                                        POSTAG::D_S,
+                                        POSTAG::D_N,
+                                        POSTAG::D_V,
+                                    ],
+                                ))
+                            || (hex_and_any(prev.pos(), &[POSTAG::D_V])
+                                && hex_and_any(next.pos(), &[POSTAG::D_W]))
+                            || (hex_and_any(prev.pos(), &[POSTAG::D_D])
+                                && hex_and_any(next.pos(), &[POSTAG::D_V]))
+                            || (hex_and_any(prev.pos(), &[POSTAG::D_V])
+                                && hex_and_any(next.pos(), &[POSTAG::D_D]))
+                            || (hex_and_any(prev.pos(), &[POSTAG::D_N])
+                                && hex_and_any(next.pos(), &[POSTAG::D_V]))
+                            || (hex_and_any(prev.pos(), &[POSTAG::D_D])
+                                && hex_and_any(next.pos(), &[POSTAG::D_F]));
                         if cond {
                             words[i].ow = Some(std::mem::replace(&mut words[i].w, "於".into()));
                             new_p = Some(POSTAG::D_P);
@@ -207,20 +311,32 @@ impl Optimizer for ZhtSynonymOptimizer {
                             }
                         }
                     }
-                    if !bool_ok && w2.as_ref().map(|n| n.pos() & POSTAG::D_T != 0).unwrap_or(false) {
+                    if !bool_ok
+                        && w2
+                            .as_ref()
+                            .map(|n| n.pos() & POSTAG::D_T != 0)
+                            .unwrap_or(false)
+                    {
                         words[i].ow = Some(std::mem::replace(&mut words[i].w, "於".into()));
                         new_p = Some(POSTAG::D_P);
                         words[i].p = new_p;
                         bool_ok = true;
                     }
                 } else if w == "么" {
-                    if w2.as_ref().map(|n| n.pos() & POSTAG::D_W != 0).unwrap_or(true) {
+                    if w2
+                        .as_ref()
+                        .map(|n| n.pos() & POSTAG::D_W != 0)
+                        .unwrap_or(true)
+                    {
                         words[i].ow = Some(std::mem::replace(&mut words[i].w, "麼".into()));
                         bool_ok = true;
                     }
                 } else if w == "余" {
                     if w2.as_ref().map(|n| n.w == "力").unwrap_or(false)
-                        && words.get(i + 2).map(|n| n.pos() & POSTAG::D_W != 0).unwrap_or(false)
+                        && words
+                            .get(i + 2)
+                            .map(|n| n.pos() & POSTAG::D_W != 0)
+                            .unwrap_or(false)
                     {
                         let nw = format!("{}{}", words[i].w, words[i + 1].w);
                         let (p, f) = seg
@@ -237,7 +353,7 @@ impl Optimizer for ZhtSynonymOptimizer {
                 }
             } else if w1_len > 1 {
                 let w = words[i].w.clone();
-                if let Some(caps) = Regex::new(r"^(.+)[发發]$").unwrap().captures(&w) {
+                if let Some(caps) = RE_FA_SUFFIX.captures(&w) {
                     let c = caps.get(1).unwrap().as_str().to_string();
                     if COLOR_HAIR.contains(&c) {
                         let nw = get_synonym(seg, &w, format!("{c}髮"));
@@ -249,7 +365,8 @@ impl Optimizer for ZhtSynonymOptimizer {
                         words[i].ow = Some(std::mem::replace(&mut words[i].w, format!("{c}發")));
                         bool_ok = true;
                     } else if w == format!("{c}发")
-                        && (w0.is_none() || w0.as_ref().map(|p| p.pos() == POSTAG::D_W).unwrap_or(false))
+                        && (w0.is_none()
+                            || w0.as_ref().map(|p| p.pos() == POSTAG::D_W).unwrap_or(false))
                     {
                         let nw = format!("{c}髮");
                         if let Some(ow) = seg.table.table.get(&nw) {
@@ -260,10 +377,8 @@ impl Optimizer for ZhtSynonymOptimizer {
                             }
                         }
                     }
-                } else if words[i].pos() & POSTAG::D_MQ != 0
-                    && Regex::new(r"^(.+)余$").unwrap().is_match(&w)
-                {
-                    let nw = Regex::new(r"^(.+)余$").unwrap().replace(&w, "${1}餘").into_owned();
+                } else if words[i].pos() & POSTAG::D_MQ != 0 && RE_YU_SUFFIX.is_match(&w) {
+                    let nw = RE_YU_SUFFIX.replace(&w, "${1}餘").into_owned();
                     words[i].ow = Some(std::mem::replace(&mut words[i].w, nw));
                     bool_ok = true;
                 } else if words[i].pos() & POSTAG::D_MQ != 0
@@ -291,7 +406,7 @@ impl Optimizer for ZhtSynonymOptimizer {
                         bool_ok = true;
                     }
                 } else if words[i].pos() & POSTAG::D_S != 0 {
-                    let nw = Regex::new(r"(.)里$").unwrap().replace(&w, "${1}裡").into_owned();
+                    let nw = RE_LI_SUFFIX.replace(&w, "${1}裡").into_owned();
                     let nw = get_synonym(seg, &w, nw);
                     if nw != w {
                         words[i].ow = Some(std::mem::replace(&mut words[i].w, nw));

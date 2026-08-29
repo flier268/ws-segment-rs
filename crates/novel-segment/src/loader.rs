@@ -13,10 +13,7 @@ pub struct DictRow {
 
 pub fn parse_pos(s: &str) -> Option<u32> {
     let s = s.trim();
-    if let Some(hex) = s
-        .strip_prefix("0x")
-        .or_else(|| s.strip_prefix("0X"))
-    {
+    if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
         u32::from_str_radix(hex, 16).ok()
     } else {
         s.parse::<u32>()

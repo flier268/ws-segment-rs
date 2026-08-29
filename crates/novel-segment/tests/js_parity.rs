@@ -102,7 +102,10 @@ fn lazy_array() {
                 .map(|seq| ordered_contains(&got, seq))
                 .unwrap_or(false)
         });
-        assert!(ok, "lazy_array failed\ninput={input}\ngot={got:?}\nalts={alts:?}");
+        assert!(
+            ok,
+            "lazy_array failed\ninput={input}\ngot={got:?}\nalts={alts:?}"
+        );
     }
 }
 
@@ -119,7 +122,8 @@ fn lazy_indexof() {
             if let Some(s) = n.as_str() {
                 text.contains(s)
             } else if let Some(arr) = n.as_array() {
-                arr.iter().any(|x| x.as_str().map(|s| text.contains(s)).unwrap_or(false))
+                arr.iter()
+                    .any(|x| x.as_str().map(|s| text.contains(s)).unwrap_or(false))
             } else {
                 false
             }
@@ -133,7 +137,9 @@ fn lazy_indexof() {
     }
     if failed > 0 {
         let (input, text, needles) = first.unwrap();
-        panic!("lazy_indexof {failed} failures; first input={input} joined={text} needles={needles:?}");
+        panic!(
+            "lazy_indexof {failed} failures; first input={input} joined={text} needles={needles:?}"
+        );
     }
 }
 
@@ -144,8 +150,13 @@ fn lazy_indexof_not() {
         let input = row[0].as_str().unwrap();
         let needles = expected_list(row);
         let text = joined(input);
-        let hit = needles.iter().any(|n| n.as_str().map(|s| text.contains(s)).unwrap_or(false));
-        assert!(!hit, "lazy_indexof_not failed input={input} joined={text} needles={needles:?}");
+        let hit = needles
+            .iter()
+            .any(|n| n.as_str().map(|s| text.contains(s)).unwrap_or(false));
+        assert!(
+            !hit,
+            "lazy_indexof_not failed input={input} joined={text} needles={needles:?}"
+        );
     }
 }
 

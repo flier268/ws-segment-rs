@@ -262,7 +262,10 @@ pub fn run_test(req: TestRequest) -> TestResult {
     };
 
     if let Some(path) = req.output_file.as_deref() {
-        let _ = std::fs::write(path, serde_json::to_string_pretty(&result).unwrap_or_default());
+        let _ = std::fs::write(
+            path,
+            serde_json::to_string_pretty(&result).unwrap_or_default(),
+        );
     }
     result
 }
@@ -446,10 +449,7 @@ fn build_message(m: &MatchResults, changed: bool) -> String {
 
 fn push_msg(out: &mut Vec<String>, v: Option<bool>, label: &str) {
     if let Some(ok) = v {
-        out.push(format!(
-            "{label}: {}",
-            if ok { "PASSED" } else { "FAILED" }
-        ));
+        out.push(format!("{label}: {}", if ok { "PASSED" } else { "FAILED" }));
     }
 }
 

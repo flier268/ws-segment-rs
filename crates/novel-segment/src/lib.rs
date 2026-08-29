@@ -23,7 +23,6 @@
 
 mod colors;
 mod datetime;
-mod zht;
 mod dict;
 mod error;
 mod loader;
@@ -38,6 +37,7 @@ mod stopword;
 mod text;
 mod tokenizers;
 mod word;
+mod zht;
 
 pub use error::{Error, Result};
 pub use options::{DoSegmentOptions, SegmentOptions};

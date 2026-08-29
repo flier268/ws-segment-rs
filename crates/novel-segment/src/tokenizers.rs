@@ -5,7 +5,8 @@ use crate::dict::DictEntry;
 use crate::names::{DOUBLE_NAME_1, DOUBLE_NAME_2, FAMILY_NAME_1, FAMILY_NAME_2, SINGLE_NAME};
 use crate::pipeline::{
     split_unknown, split_unset, Tokenizer, CHS_NAME_TOKENIZER, DICT_TOKENIZER, FOREIGN_TOKENIZER,
-    JP_SIMPLE_TOKENIZER, PUNCTUATION_TOKENIZER, URL_TOKENIZER, WILDCARD_TOKENIZER, ZHUYIN_TOKENIZER,
+    JP_SIMPLE_TOKENIZER, PUNCTUATION_TOKENIZER, URL_TOKENIZER, WILDCARD_TOKENIZER,
+    ZHUYIN_TOKENIZER,
 };
 use crate::postag::POSTAG;
 use crate::segment::Segment;
@@ -59,7 +60,9 @@ impl Tokenizer for UrlTokenizer {
             if hits.is_empty() {
                 return None;
             }
-            Some(interleave_hits(text, &hits, |w| Word::new(w).with_p(POSTAG::URL)))
+            Some(interleave_hits(text, &hits, |w| {
+                Word::new(w).with_p(POSTAG::URL)
+            }))
         })
     }
 }
@@ -97,7 +100,11 @@ fn match_url(text: &str) -> Vec<(usize, String)> {
     ret
 }
 
-fn interleave_hits(text: &str, hits: &[(usize, String)], mut tagged: impl FnMut(&str) -> Word) -> Vec<Word> {
+fn interleave_hits(
+    text: &str,
+    hits: &[(usize, String)],
+    mut tagged: impl FnMut(&str) -> Word,
+) -> Vec<Word> {
     let mut ret = Vec::new();
     let mut lastc = 0usize;
     for (c, w) in hits {
@@ -161,11 +168,7 @@ fn split_wildcard(text: &str, seg: &Segment) -> Option<Vec<Word>> {
         return None;
     }
     Some(interleave_hits(text, &hits, |w| {
-        let p = table
-            .table
-            .get(&w.to_lowercase())
-            .map(|e| e.p)
-            .unwrap_or(0);
+        let p = table.table.get(&w.to_lowercase()).map(|e| e.p).unwrap_or(0);
         Word::new(w).with_p(p)
     }))
 }
@@ -529,7 +532,8 @@ fn filter_word(words: Vec<Word>, preword: Option<&Word>, text: &str, seg: &Segme
                     {
                         row.d += 1.0;
                     }
-                    if pw.pos() & POSTAG::D_F != 0 && (wp & POSTAG::A_M != 0 || wp & POSTAG::D_MQ != 0)
+                    if pw.pos() & POSTAG::D_F != 0
+                        && (wp & POSTAG::A_M != 0 || wp & POSTAG::D_MQ != 0)
                     {
                         row.d += 1.0;
                     }
@@ -607,7 +611,8 @@ fn filter_word(words: Vec<Word>, preword: Option<&Word>, text: &str, seg: &Segme
                             && POSTAG::any(pw.pos(), &[POSTAG::D_MQ, POSTAG::A_M])
                         {
                             row.d += 1.0;
-                        } else if (nextw.w == "后" || nextw.w == "後") && POSTAG::any(wp, &[POSTAG::D_F])
+                        } else if (nextw.w == "后" || nextw.w == "後")
+                            && POSTAG::any(wp, &[POSTAG::D_F])
                         {
                             row.d += 1.0;
                         } else if (w.w == "后" || w.w == "後")
@@ -805,7 +810,14 @@ fn get_chunks(
             ret.push(w1);
         } else {
             let t = char_substr_from(text, char_len(&word.w));
-            let chunks = get_chunks(wordpos, nextcur, &t, total_count, Some(max_chunk_count), seg);
+            let chunks = get_chunks(
+                wordpos,
+                nextcur,
+                &t,
+                total_count,
+                Some(max_chunk_count),
+                seg,
+            );
             for ws in chunks {
                 let mut v = vec![word.clone()];
                 v.extend(ws);
@@ -856,8 +868,12 @@ fn match_name(text: &str) -> Vec<(usize, String)> {
         let mut name: Option<String> = None;
         let f2 = char_slice(text, cur, 2);
         if FAMILY_NAME_2.contains(&f2) {
-            let n1 = char_at(text, cur + 2).map(|c| c.to_string()).unwrap_or_default();
-            let n2 = char_at(text, cur + 3).map(|c| c.to_string()).unwrap_or_default();
+            let n1 = char_at(text, cur + 2)
+                .map(|c| c.to_string())
+                .unwrap_or_default();
+            let n2 = char_at(text, cur + 3)
+                .map(|c| c.to_string())
+                .unwrap_or_default();
             if DOUBLE_NAME_1.contains(&n1) && DOUBLE_NAME_2.contains(&n2) {
                 name = Some(format!("{f2}{n1}{n2}"));
             } else if SINGLE_NAME.contains(&n1) {
@@ -865,10 +881,16 @@ fn match_name(text: &str) -> Vec<(usize, String)> {
                 name = Some(format!("{f2}{n1}{extra}"));
             }
         }
-        let f1 = char_at(text, cur).map(|c| c.to_string()).unwrap_or_default();
+        let f1 = char_at(text, cur)
+            .map(|c| c.to_string())
+            .unwrap_or_default();
         if name.is_none() && FAMILY_NAME_1.contains(&f1) {
-            let n1 = char_at(text, cur + 1).map(|c| c.to_string()).unwrap_or_default();
-            let n2 = char_at(text, cur + 2).map(|c| c.to_string()).unwrap_or_default();
+            let n1 = char_at(text, cur + 1)
+                .map(|c| c.to_string())
+                .unwrap_or_default();
+            let n2 = char_at(text, cur + 2)
+                .map(|c| c.to_string())
+                .unwrap_or_default();
             if DOUBLE_NAME_1.contains(&n1) && DOUBLE_NAME_2.contains(&n2) {
                 name = Some(format!("{f1}{n1}{n2}"));
             } else if SINGLE_NAME.contains(&n1) {
@@ -911,6 +933,16 @@ fn is_kata(c: char) -> bool {
     matches!(c, '\u{30A1}'..='\u{30F4}' | 'ー' | '\u{FF71}'..='\u{FF9D}' | 'ﾞ' | 'ｰ')
 }
 
+fn kana_kind(c: char) -> Option<bool> {
+    if is_hira(c) {
+        Some(true)
+    } else if is_kata(c) {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 fn split_jp(text: &str) -> Option<Vec<Word>> {
     let b1 = text.chars().any(is_hira);
     let b2 = text.chars().any(is_kata);
@@ -920,24 +952,43 @@ fn split_jp(text: &str) -> Option<Vec<Word>> {
         }
         return None;
     }
-    static RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(concat!(
-            r"((?:[^ァ-ヴーｱ-ﾝﾞｰ]+)?[ぁ-ん]+(?=[ァ-ヴーｱ-ﾝﾞｰ])",
-            r"|(?:[^ぁ-ん]+)?[ァ-ヴーｱ-ﾝﾞｰ]+(?=[ぁ-ん]))"
-        ))
-        .unwrap()
-    });
+    // rust `regex` has no lookahead, so scan JS `(?:[^other]+)?run(?=other)`.
+    Some(split_jp_mixed(text))
+}
+
+fn split_jp_mixed(text: &str) -> Vec<Word> {
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    let n = chars.len();
     let mut ret = Vec::new();
-    for part in split_keep_re(text, &RE) {
-        if !part.is_empty() {
-            ret.push(Word::new(part));
+    let mut from = 0;
+    while from < n {
+        let mut switch = None;
+        for i in from + 1..n {
+            if let (Some(prev), Some(cur)) = (kana_kind(chars[i - 1].1), kana_kind(chars[i].1)) {
+                if prev != cur {
+                    switch = Some((i, cur));
+                    break;
+                }
+            }
         }
+        let Some((i, other)) = switch else {
+            ret.push(Word::new(&text[chars[from].0..]));
+            break;
+        };
+        let mut j = i;
+        while j > from && kana_kind(chars[j - 1].1) == Some(!other) {
+            j -= 1;
+        }
+        while j > from && kana_kind(chars[j - 1].1) != Some(other) {
+            j -= 1;
+        }
+        if j > from {
+            ret.push(Word::new(&text[chars[from].0..chars[j].0]));
+        }
+        ret.push(Word::new(&text[chars[j].0..chars[i].0]));
+        from = i;
     }
-    if ret.is_empty() {
-        None
-    } else {
-        Some(ret)
-    }
+    ret
 }
 
 // ---------------------------------------------------------------------------
@@ -964,7 +1015,8 @@ fn split_zhuyin(text: &str) -> Option<Vec<Word>> {
     if !text.chars().any(is_zhuyin) {
         return None;
     }
-    static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"([\u{31A0}-\u{31BA}\u{3105}-\u{312E}]+)").unwrap());
+    static RE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"([\u{31A0}-\u{31BA}\u{3105}-\u{312E}]+)").unwrap());
     let mut ret = Vec::new();
     for part in split_keep_re(text, &RE) {
         if !part.is_empty() {
@@ -995,5 +1047,44 @@ mod tests {
             match_url("主页http://ucdok.com娃"),
             vec![(2, "http://ucdok.com".into())]
         );
+    }
+
+    fn jp_parts(text: &str) -> Option<Vec<String>> {
+        split_jp(text).map(|words| words.into_iter().map(|word| word.w).collect())
+    }
+
+    #[test]
+    fn split_jp_pure_scripts_and_non_jp() {
+        assert_eq!(jp_parts("こんにちは"), Some(vec!["こんにちは".into()]));
+        assert_eq!(jp_parts("カタカナ"), Some(vec!["カタカナ".into()]));
+        assert!(jp_parts("hello").is_none());
+        assert!(jp_parts("制度很好").is_none());
+    }
+
+    #[test]
+    fn split_jp_mixed_kana_matches_js_lookahead_split() {
+        let cases: &[(&str, &[&str])] = &[
+            ("こんにちはカタカナ", &["こんにちは", "カタカナ"]),
+            ("abcひらカタ", &["abcひら", "カタ"]),
+            ("カタひらabc", &["カタ", "ひらabc"]),
+            ("ひらカナひら", &["ひら", "カナ", "ひら"]),
+            ("した「ドラゴン」", &["した「ドラゴン」"]),
+            ("ひら漢字カタ", &["ひら漢字カタ"]),
+            ("ひらxyzカタひら", &["ひら", "xyzカタ", "ひら"]),
+            ("abcひらxyzカタ", &["abcひらxyzカタ"]),
+            ("カタabcひらカタ", &["カタ", "abcひら", "カタ"]),
+            ("ひら「カタひら", &["ひら", "「カタ", "ひら"]),
+            ("ひカひ", &["ひ", "カ", "ひ"]),
+            ("漢字カタひら", &["漢字カタ", "ひら"]),
+            ("xxひらyyカタzzひら", &["xxひらyyカタzzひら"]),
+            ("した「ドラゴン」です", &["した「ドラゴン」です"]),
+            ("ｱｲｳこんにちは", &["ｱｲｳ", "こんにちは"]),
+            ("ーカタひら", &["ーカタ", "ひら"]),
+            ("ひらｰカタ", &["ひら", "ｰカタ"]),
+        ];
+        for &(text, parts) in cases {
+            let expected: Vec<String> = parts.iter().map(|s| (*s).to_string()).collect();
+            assert_eq!(jp_parts(text), Some(expected), "{text}");
+        }
     }
 }

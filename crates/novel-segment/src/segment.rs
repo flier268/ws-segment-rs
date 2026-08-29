@@ -12,9 +12,7 @@ use crate::pipeline::{
 };
 use crate::postag::POSTAG;
 use crate::text::{is_newline_only, split_sections};
-use crate::tokenizers::{
-    builtin_tokenizers, DEFAULT_MAX_CHUNK_COUNT, DEFAULT_MAX_CHUNK_COUNT_MIN,
-};
+use crate::tokenizers::{builtin_tokenizers, DEFAULT_MAX_CHUNK_COUNT, DEFAULT_MAX_CHUNK_COUNT_MIN};
 use crate::word::{stringify_list, Word};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -203,7 +201,8 @@ impl Segment {
         let path = path.as_ref();
         let rows = load_dict_file(path)?;
         for row in rows {
-            self.table.add_with_cjk(&row.w, row.p, row.f, self.options.auto_cjk);
+            self.table
+                .add_with_cjk(&row.w, row.p, row.f, self.options.auto_cjk);
         }
         self.inited = true;
         Ok(self)
@@ -219,7 +218,8 @@ impl Segment {
                 }
                 match kind {
                     DictKind::Table => {
-                        self.table.add_with_cjk(&row.w, row.p, row.f, self.options.auto_cjk);
+                        self.table
+                            .add_with_cjk(&row.w, row.p, row.f, self.options.auto_cjk);
                     }
                     DictKind::Wildcard => {
                         self.wildcard.add(row.w, row.p, row.f, true);

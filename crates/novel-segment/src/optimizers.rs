@@ -52,7 +52,12 @@ impl Optimizer for EmailOptimizer {
         while i + 1 < words.len() {
             let is_ascii = words[i].pos() == POSTAG::A_NX
                 || (words[i].pos() == POSTAG::A_M
-                    && words[i].w.chars().next().map(|c| (c as u32) < 128).unwrap_or(false));
+                    && words[i]
+                        .w
+                        .chars()
+                        .next()
+                        .map(|c| (c as u32) < 128)
+                        .unwrap_or(false));
             if addr_start.is_none() && is_ascii {
                 addr_start = Some(i);
                 i += 1;
@@ -63,7 +68,12 @@ impl Optimizer for EmailOptimizer {
                 i += 1;
                 continue;
             }
-            let in_email = words[i].w.chars().next().map(|c| EMAIL_CHAR.contains(&c)).unwrap_or(false);
+            let in_email = words[i]
+                .w
+                .chars()
+                .next()
+                .map(|c| EMAIL_CHAR.contains(&c))
+                .unwrap_or(false);
             if has_at && i > 0 && words[i - 1].w != "@" && !is_ascii && !in_email {
                 if let Some(start) = addr_start {
                     let mail: String = words[start..i].iter().map(|w| w.w.as_str()).collect();
@@ -89,7 +99,12 @@ impl Optimizer for EmailOptimizer {
                     let is_ascii = last.pos() == POSTAG::A_NX
                         || (last.pos() == POSTAG::A_M
                             && last.w.chars().count() == 1
-                            && last.w.chars().next().map(|c| EMAIL_CHAR.contains(&c)).unwrap_or(false));
+                            && last
+                                .w
+                                .chars()
+                                .next()
+                                .map(|c| EMAIL_CHAR.contains(&c))
+                                .unwrap_or(false));
                     if is_ascii {
                         let mail: String = words[start..].iter().map(|w| w.w.as_str()).collect();
                         let len = words.len() - start;
@@ -125,7 +140,8 @@ impl Optimizer for ChsNameOptimizer {
             }
             let valid = {
                 let ew = seg.table.table.get(&nw);
-                ew.map(|e| e.p == 0 || e.p & POSTAG::A_NR != 0).unwrap_or(true)
+                ew.map(|e| e.p == 0 || e.p & POSTAG::A_NR != 0)
+                    .unwrap_or(true)
             };
             if !valid {
                 i += 1;
@@ -161,7 +177,13 @@ impl Optimizer for ChsNameOptimizer {
             }
             if words[i].pos_falsy() || words[i + 1].pos_falsy() {
                 if is_first_name(&w, &n1) {
-                    splice_created(&mut words, i, 2, Word::new(nw.clone()).with_p(POSTAG::A_NR), seg);
+                    splice_created(
+                        &mut words,
+                        i,
+                        2,
+                        Word::new(nw.clone()).with_p(POSTAG::A_NR),
+                        seg,
+                    );
                     if i > 0 {
                         let pre = words[i - 1].w.clone();
                         let three = format!("{pre}{w}{n1}");
@@ -169,7 +191,13 @@ impl Optimizer for ChsNameOptimizer {
                             && is_family_name(&pre)
                             && !seg.blacklist_optimizer.contains(&three)
                         {
-                            splice_created(&mut words, i - 1, 2, Word::new(three).with_p(POSTAG::A_NR), seg);
+                            splice_created(
+                                &mut words,
+                                i - 1,
+                                2,
+                                Word::new(three).with_p(POSTAG::A_NR),
+                                seg,
+                            );
                             continue;
                         }
                     }
@@ -197,7 +225,10 @@ impl Optimizer for ChsNameOptimizer {
             }
             if is_family_name(&w) && SINGLE_NAME.contains(&n1) {
                 let ew = seg.table.table.get(&nw);
-                if ew.map(|e| e.p == 0 || e.p & POSTAG::A_NR != 0).unwrap_or(true) {
+                if ew
+                    .map(|e| e.p == 0 || e.p & POSTAG::A_NR != 0)
+                    .unwrap_or(true)
+                {
                     splice_created(&mut words, i, 2, Word::new(nw).with_p(POSTAG::A_NR), seg);
                     i += 1;
                     continue;
@@ -218,9 +249,13 @@ fn is_first_name(w1: &str, w2: &str) -> bool {
 // Dict optimizer
 // ---------------------------------------------------------------------------
 
-static RE_HOW_MANY: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(?:[數数幾几][百千萬十億兆万亿]|毎)$").unwrap());
+static RE_HOW_MANY: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^(?:[數数幾几][百千萬十億兆万亿]|毎)$").unwrap());
 static RE_JI: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[數数幾几第]$").unwrap());
 static RE_DIR: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[東西南北东]+$").unwrap());
+static RE_DIGITS: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[\d０-９]+$").unwrap());
+static RE_DECIMAL: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^(?:(?:[\d０-９]+)?(?:\.[\d０-９]+)|(?:[\d０-９]+))$").unwrap());
 
 pub struct DictOptimizer;
 
@@ -246,7 +281,12 @@ fn dict_optimize_pass(mut words: Vec<Word>, seg: &Segment) -> Vec<Word> {
         if w1.w != "了" && w1.pos() & POSTAG::D_A != 0 && w2.pos() & POSTAG::D_U != 0 {
             let mut p = POSTAG::D_A;
             let mut f = None;
-            if cache.as_ref().map(|e| e.p & POSTAG::D_A != 0).unwrap_or(false) || cache.is_none() {
+            if cache
+                .as_ref()
+                .map(|e| e.p & POSTAG::D_A != 0)
+                .unwrap_or(false)
+                || cache.is_none()
+            {
                 if let Some(e) = &cache {
                     if e.p & POSTAG::D_A != 0 {
                         p = e.p;
@@ -279,7 +319,10 @@ fn dict_optimize_pass(mut words: Vec<Word>, seg: &Segment) -> Vec<Word> {
 
         if is_mergeable(&w1, &w2, &nw, cache.is_some(), cache.as_ref()) {
             if let Some(e) = &cache {
-                splice_created(&mut words, i, 2,
+                splice_created(
+                    &mut words,
+                    i,
+                    2,
                     Word::new(nw.clone()).with_p(e.p).with_f(e.f),
                     seg,
                 );
@@ -319,10 +362,11 @@ fn dict_optimize_pass(mut words: Vec<Word>, seg: &Segment) -> Vec<Word> {
                     continue;
                 }
                 if w2.w == "," {
-                    let r1 = Regex::new(r"^[\d０-９]+$").unwrap();
-                    let r2 = Regex::new(r"^(?:(?:[\d０-９]+)?(?:\.[\d０-９]+)|(?:[\d０-９]+))$").unwrap();
-                    if r1.is_match(&w1.w) && r2.is_match(&w3.w) {
-                        splice_created(&mut words, i, 3,
+                    if RE_DIGITS.is_match(&w1.w) && RE_DECIMAL.is_match(&w3.w) {
+                        splice_created(
+                            &mut words,
+                            i,
+                            3,
                             Word::new(format!("{}{}{}", w1.w, w2.w, w3.w)).with_p(POSTAG::A_M),
                             seg,
                         );
@@ -389,7 +433,13 @@ fn dict_optimize_pass(mut words: Vec<Word>, seg: &Segment) -> Vec<Word> {
     words
 }
 
-fn is_mergeable(w1: &Word, w2: &Word, _nw: &str, exists: bool, cache: Option<&crate::dict::DictEntry>) -> bool {
+fn is_mergeable(
+    w1: &Word,
+    w2: &Word,
+    _nw: &str,
+    exists: bool,
+    cache: Option<&crate::dict::DictEntry>,
+) -> bool {
     if !exists {
         return false;
     }
@@ -487,13 +537,7 @@ impl Optimizer for ForeignOptimizer {
             }
             let nw = format!("{}{}", words[i].w, words[i + 1].w);
             if let Some(e) = seg.table.table.get(&nw) {
-                splice_created(
-                    &mut words,
-                    i,
-                    2,
-                    Word::new(nw).with_p(e.p).with_f(e.f),
-                    seg,
-                );
+                splice_created(&mut words, i, 2, Word::new(nw).with_p(e.p).with_f(e.f), seg);
                 continue;
             }
             i += 1;

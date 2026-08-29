@@ -66,31 +66,54 @@ fn split_line_edge_space() {
 
 #[test]
 fn lazy_base_samples() {
-    assert!(contains_seq(&words("胡锦涛出席APEC领导人会议后回京"), &["会议", "回京"]));
+    assert!(contains_seq(
+        &words("胡锦涛出席APEC领导人会议后回京"),
+        &["会议", "回京"]
+    ));
     assert!(contains_seq(&words("全部都有"), &["全部", "都有"]));
     assert!(contains_seq(&words("從位在下方的湖面"), &["位在", "下方"]));
     assert!(contains_seq(
         &words("將那叫燕麥茶的玩意兒一口氣倒入口中。"),
         &["一口氣", "倒入", "口中"]
     ));
-    assert!(contains_seq(&words("疲憊不堪的強尼癱坐在岩石上"), &["癱坐"]));
+    assert!(contains_seq(
+        &words("疲憊不堪的強尼癱坐在岩石上"),
+        &["癱坐"]
+    ));
 }
 
 #[test]
 fn tests_old_exact() {
     let cases: &[(&str, &[&str])] = &[
-        ("永和服装饰品有限公司", &["永和", "服装", "饰品", "有限公司"]),
+        (
+            "永和服装饰品有限公司",
+            &["永和", "服装", "饰品", "有限公司"],
+        ),
         ("本科班学生", &["本科", "班", "学生"]),
         ("研究生命起源", &["研究", "生命", "起源"]),
         ("一一", &["一一"]),
         ("一 一", &["一", " ", "一"]),
-        ("欢迎访问我的个人主页http://ucdok.com娃哈哈", &[
-            "欢迎", "访问", "我", "的", "个人", "主页", "http://ucdok.com", "娃哈哈",
-        ]),
+        (
+            "欢迎访问我的个人主页http://ucdok.com娃哈哈",
+            &[
+                "欢迎",
+                "访问",
+                "我",
+                "的",
+                "个人",
+                "主页",
+                "http://ucdok.com",
+                "娃哈哈",
+            ],
+        ),
     ];
     for (input, expected) in cases {
         let got = words(input);
-        assert_eq!(&got.iter().map(|s| s.as_str()).collect::<Vec<_>>(), expected, "input={input}");
+        assert_eq!(
+            &got.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            expected,
+            "input={input}"
+        );
     }
 }
 
@@ -118,10 +141,11 @@ fn call_options_override_constructor() {
             ..Default::default()
         },
     );
-    assert!(off.iter().any(|w| w.contains('涂') || w == "涂鴉"), "{off:?}");
+    assert!(
+        off.iter().any(|w| w.contains('涂') || w == "涂鴉"),
+        "{off:?}"
+    );
 }
-
-
 
 #[test]
 fn cache_does_not_apply_modules_when_nomod() {
