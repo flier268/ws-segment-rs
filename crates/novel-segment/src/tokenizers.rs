@@ -1,6 +1,5 @@
 //! Built-in tokenizers.
 
-use crate::datetime::DATETIME;
 use crate::dict::DictEntry;
 use crate::names::{DOUBLE_NAME_1, DOUBLE_NAME_2, FAMILY_NAME_1, FAMILY_NAME_2, SINGLE_NAME};
 use crate::pipeline::{
@@ -373,7 +372,13 @@ fn raw_from_entry(w: &str, e: &DictEntry) -> Word {
 
 pub const DEFAULT_MAX_CHUNK_COUNT: usize = 40;
 pub const DEFAULT_MAX_CHUNK_COUNT_MIN: usize = 30;
+/// Spans longer than this (UTF-16 units) use DAG beam search instead of `get_chunks`.
+pub(crate) const DICT_ENUM_MAX_SPAN: usize = 24;
 
+/// Dictionary tokenizer (MMSEG-style scoring).
+///
+/// Spans longer than [`DICT_ENUM_MAX_SPAN`] use `dict_path` DAG search instead of
+/// enumerating `get_chunks`. See the crate README.
 pub struct DictTokenizer;
 
 impl Tokenizer for DictTokenizer {
@@ -469,254 +474,28 @@ fn match_word(text: &str, mut cur: usize, preword: Option<&Word>, seg: &Segment)
     filter_word(ret, preword, text, seg)
 }
 
-#[derive(Clone, Debug)]
-struct Assess {
-    x: f64,
-    a: f64,
-    b: f64,
-    c: f64,
-    d: f64,
-}
-
 fn filter_word(words: Vec<Word>, preword: Option<&Word>, text: &str, seg: &Segment) -> Vec<Word> {
     if words.is_empty() && text.is_empty() {
         return words;
     }
     let wordpos = get_pos_info(&words, text);
+    // Enumerating get_chunks is exponential past this span length.
+    if char_len(text) > DICT_ENUM_MAX_SPAN {
+        let mut curr = crate::dict_path::best_path(&wordpos, text, preword, seg);
+        curr.retain(|w| seg.table.table.contains_key(&w.w));
+        return curr;
+    }
     let chunks = get_chunks(&wordpos, 0, text, 0, None, seg);
     if chunks.is_empty() {
         return Vec::new();
     }
-    let mut assess = Vec::with_capacity(chunks.len());
-    for chunk in &chunks {
-        let mut row = Assess {
-            x: chunk.len() as f64,
-            a: 0.0,
-            b: 0.0,
-            c: 0.0,
-            d: 0.0,
-        };
-        let sp = char_len(text) as f64 / chunk.len() as f64;
-        let mut has_d_v = false;
-        let mut prew: Option<Word> = preword.cloned();
-        for (j, w) in chunk.iter().enumerate() {
-            if let Some(e) = seg.table.table.get(&w.w) {
-                let wp = e.p;
-                row.a += w.f.unwrap_or(e.f);
-                if j == 0 && preword.is_none() && wp & POSTAG::D_V != 0 {
-                    has_d_v = true;
-                }
-                if let Some(ref pw) = prew {
-                    if pw.w == "年" && matches!(w.w.as_str(), "历史" | "歷史" | "歴史") {
-                        row.d += 0.5;
-                    }
-                    if pw.pos() & POSTAG::A_M != 0
-                        && (wp & POSTAG::A_Q != 0 || DATETIME.contains(&w.w))
-                    {
-                        row.d += 1.0;
-                    }
-                    if wp & POSTAG::D_V != 0 {
-                        has_d_v = true;
-                        if pw.pos() & POSTAG::D_D != 0 {
-                            row.d += 1.0;
-                        }
-                    }
-                    if (pw.pos() & POSTAG::A_NS != 0
-                        || pw.pos() & POSTAG::A_NT != 0
-                        || pw.pos() & POSTAG::D_A != 0)
-                        && (wp & POSTAG::D_N != 0
-                            || wp & POSTAG::A_NR != 0
-                            || wp & POSTAG::A_NS != 0
-                            || wp & POSTAG::A_NZ != 0
-                            || wp & POSTAG::A_NT != 0)
-                    {
-                        row.d += 1.0;
-                    }
-                    if pw.pos() & POSTAG::D_F != 0
-                        && (wp & POSTAG::A_M != 0 || wp & POSTAG::D_MQ != 0)
-                    {
-                        row.d += 1.0;
-                    }
-                    if (FAMILY_NAME_1.contains(&pw.w) || FAMILY_NAME_2.contains(&pw.w))
-                        && (wp & POSTAG::D_N != 0 || wp & POSTAG::A_NZ != 0)
-                    {
-                        row.d += 1.0;
-                    }
-                    if POSTAG::any(pw.pos(), &[POSTAG::D_S, POSTAG::A_NS])
-                        && POSTAG::any(wp, &[POSTAG::D_F])
-                    {
-                        row.d += 0.5;
-                    }
-                    if let Some(nextw) = chunk.get(j + 1) {
-                        let np = seg
-                            .table
-                            .table
-                            .get(&nextw.w)
-                            .map(|e| e.p)
-                            .unwrap_or(nextw.pos());
-                        let mut temp_ok = true;
-                        if (w.w == "的" || w.w == "之")
-                            && np != 0
-                            && (np & POSTAG::D_N != 0
-                                || np & POSTAG::D_V != 0
-                                || np & POSTAG::A_NR != 0
-                                || np & POSTAG::A_NS != 0
-                                || np & POSTAG::A_NZ != 0
-                                || np & POSTAG::A_NT != 0)
-                        {
-                            row.d += 1.5;
-                            temp_ok = false;
-                        } else if pw.pos() != 0 && wp & POSTAG::D_C != 0 {
-                            let p = pw.pos() & np;
-                            if pw.pos() == np {
-                                row.d += 1.0;
-                                temp_ok = false;
-                            } else if p != 0 {
-                                row.d += 0.25;
-                                temp_ok = false;
-                                if p & POSTAG::D_N != 0 {
-                                    row.d += 0.75;
-                                }
-                            }
-                        }
-                        if temp_ok && wp & POSTAG::D_R != 0 && np & POSTAG::D_P != 0 {
-                            row.d += 1.0;
-                            temp_ok = false;
-                        }
-                        if temp_ok && np != 0 && wp & POSTAG::D_P != 0 {
-                            if np & POSTAG::A_NR != 0 && char_len(&nextw.w) > 1 {
-                                row.d += 1.0;
-                                if pw.w == "的" {
-                                    row.d += 1.0;
-                                    temp_ok = false;
-                                }
-                            }
-                        }
-                        if temp_ok && wp & POSTAG::D_P != 0 {
-                            if POSTAG::any(pw.pos(), &[POSTAG::D_N])
-                                && POSTAG::any(np, &[POSTAG::D_N, POSTAG::D_V])
-                            {
-                                row.d += 1.0;
-                                temp_ok = false;
-                            } else if POSTAG::any(pw.pos(), &[POSTAG::D_R])
-                                && POSTAG::any(np, &[POSTAG::D_R])
-                            {
-                                row.d += 0.5;
-                                temp_ok = false;
-                            }
-                        }
-                        let _ = temp_ok;
-                        if nextw.w == "后"
-                            && wp & POSTAG::D_T != 0
-                            && POSTAG::any(pw.pos(), &[POSTAG::D_MQ, POSTAG::A_M])
-                        {
-                            row.d += 1.0;
-                        } else if (nextw.w == "后" || nextw.w == "後")
-                            && POSTAG::any(wp, &[POSTAG::D_F])
-                        {
-                            row.d += 1.0;
-                        } else if (w.w == "后" || w.w == "後")
-                            && POSTAG::any(pw.pos(), &[POSTAG::D_F])
-                            && POSTAG::any(np, &[POSTAG::D_N])
-                        {
-                            row.d += 1.0;
-                        }
-                    } else if wp & POSTAG::D_F != 0 && POSTAG::any(pw.pos(), &[POSTAG::D_N]) {
-                        row.d += 1.0;
-                    }
-                }
-                let mut scored = w.clone();
-                scored.p = Some(wp);
-                prew = Some(scored);
-            } else {
-                row.c += 1.0;
-                prew = Some(w.clone());
-            }
-            row.b += (sp - char_len(&w.w) as f64).powi(2);
-        }
-        if !has_d_v {
-            row.d -= 0.5;
-        }
-        row.a /= chunk.len() as f64;
-        row.b /= chunk.len() as f64;
-        assess.push(row);
-    }
-    let top = get_tops(&assess);
-    let mut curr = chunks[top].clone();
+    let assess: Vec<_> = chunks
+        .iter()
+        .map(|chunk| crate::dict_path::assess_chunk(chunk, preword, text, seg))
+        .collect();
+    let mut curr = chunks[crate::dict_path::get_tops(&assess)].clone();
     curr.retain(|w| seg.table.table.contains_key(&w.w));
     curr
-}
-
-fn get_tops(assess: &[Assess]) -> usize {
-    if assess.is_empty() {
-        return 0;
-    }
-    let mut top = assess[0].clone();
-    for ass in assess.iter().skip(1) {
-        if ass.a > top.a {
-            top.a = ass.a;
-        }
-        if ass.b < top.b {
-            top.b = ass.b;
-        }
-        if ass.c > top.c {
-            top.c = ass.c;
-        }
-        if ass.d < top.d {
-            top.d = ass.d;
-        }
-        if ass.x > top.x {
-            top.x = ass.x;
-        }
-    }
-    let mut tops = Vec::with_capacity(assess.len());
-    for ass in assess {
-        let mut s = (top.x - ass.x) * 1.5;
-        if ass.a >= top.a {
-            s += 1.0;
-        }
-        if ass.b <= top.b {
-            s += 1.0;
-        }
-        s += top.c - ass.c;
-        s += if ass.d < 0.0 {
-            top.d + ass.d
-        } else {
-            ass.d - top.d
-        };
-        tops.push(s);
-    }
-    let mut curri = 0usize;
-    let mut maxs = tops[0];
-    for (i, &s) in tops.iter().enumerate() {
-        if s > maxs {
-            curri = i;
-            maxs = s;
-        } else if (s - maxs).abs() < f64::EPSILON {
-            let mut a = 0;
-            let mut b = 0;
-            if assess[i].c < assess[curri].c {
-                a += 1;
-            } else if assess[i].c != assess[curri].c {
-                b += 1;
-            }
-            if assess[i].a > assess[curri].a {
-                a += 1;
-            } else if assess[i].a != assess[curri].a {
-                b += 1;
-            }
-            if assess[i].x < assess[curri].x {
-                a += 1;
-            } else if assess[i].x != assess[curri].x {
-                b += 1;
-            }
-            if a > b {
-                curri = i;
-                maxs = s;
-            }
-        }
-    }
-    curri
 }
 
 fn get_pos_info(words: &[Word], text: &str) -> Vec<Vec<Word>> {
@@ -733,6 +512,12 @@ fn get_pos_info(words: &[Word], text: &str) -> Vec<Vec<Word>> {
         if wordpos[i].is_empty() {
             if let Some(ch) = char_at(text, i) {
                 wordpos[i].push(Word::new(ch.to_string()).with_c(i).with_f(0.0));
+            } else {
+                // Surrogate / non-decodable UTF-16 unit: still expose a 1-unit edge.
+                let unit = char_slice(text, i, 1);
+                if !unit.is_empty() {
+                    wordpos[i].push(Word::new(unit).with_c(i).with_f(0.0));
+                }
             }
         }
     }

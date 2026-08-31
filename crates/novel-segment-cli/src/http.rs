@@ -34,7 +34,10 @@ fn handle(mut request: Request) -> Result<(), String> {
     let path = parsed.path().to_string();
     let mut rq = query_map(&parsed);
 
-    if matches!(*request.method(), Method::Post | Method::Put | Method::Patch) {
+    if matches!(
+        *request.method(),
+        Method::Post | Method::Put | Method::Patch
+    ) {
         let mut buf = String::new();
         if let Err(e) = request.as_reader().read_to_string(&mut buf) {
             let body = json!({"code":0,"error":true,"message":e.to_string()}).to_string();
@@ -97,7 +100,11 @@ fn respond_segment(request: Request, mut rq: Map<String, Value>) -> Result<(), S
     if debug {
         json["request"] = json!({ "rq": rq, "url": request.url() });
     }
-    let max_age = if nocache || debug { None } else { Some(3_600_000) };
+    let max_age = if nocache || debug {
+        None
+    } else {
+        Some(3_600_000)
+    };
     request
         .respond(json_response(200, json.to_string(), max_age))
         .map_err(|e| e.to_string())
@@ -137,7 +144,11 @@ fn respond_conv(request: Request, mut rq: Map<String, Value>) -> Result<(), Stri
         "time": now_ms() - timestamp,
         "results": results,
     });
-    let max_age = if nocache || debug { None } else { Some(3_600_000) };
+    let max_age = if nocache || debug {
+        None
+    } else {
+        Some(3_600_000)
+    };
     request
         .respond(json_response(200, json.to_string(), max_age))
         .map_err(|e| e.to_string())
@@ -176,7 +187,10 @@ fn collect_input(input: Option<Value>) -> Vec<String> {
             .filter_map(|v| match v {
                 Value::String(s) => Some(s),
                 Value::Array(bytes) => {
-                    let u8s: Vec<u8> = bytes.iter().filter_map(|b| b.as_u64().map(|n| n as u8)).collect();
+                    let u8s: Vec<u8> = bytes
+                        .iter()
+                        .filter_map(|b| b.as_u64().map(|n| n as u8))
+                        .collect();
                     Some(String::from_utf8_lossy(&u8s).into_owned())
                 }
                 _ => v.as_str().map(|s| s.to_string()),

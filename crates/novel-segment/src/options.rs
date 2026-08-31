@@ -19,8 +19,10 @@ pub struct SegmentOptions {
     /// Default `do_segment` options.
     pub options_do_segment: DoSegmentOptions,
     /// DictTokenizer max chunk count (JS default 40).
+    /// Only used for short spans (≤ 24 UTF-16 units) that still enumerate `get_chunks`.
     pub max_chunk_count: Option<usize>,
     /// DictTokenizer min chunk count (JS default 30).
+    /// Only used for short spans (≤ 24 UTF-16 units) that still enumerate `get_chunks`.
     pub min_chunk_count: Option<usize>,
     /// Module names to disable.
     pub disable_modules: Vec<String>,

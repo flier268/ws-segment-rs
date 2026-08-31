@@ -74,8 +74,14 @@ fn handle(msg: Value) -> Option<Value> {
 fn call_tool(name: &str, args: Value) -> Result<String, String> {
     let req = match name {
         "segment_text" => TestRequest {
-            text: args.get("text").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            expected_full: args.get("expectedFull").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            text: args
+                .get("text")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            expected_full: args
+                .get("expectedFull")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             expected_contains: parse_expected(args.get("expectedContains")),
             expected_contains_not: parse_expected(args.get("expectedContainsNot")),
             expected_index_of: parse_expected(args.get("expectedIndexOf")),
@@ -94,7 +100,10 @@ fn call_tool(name: &str, args: Value) -> Result<String, String> {
             ..Default::default()
         },
         "segment_file" => TestRequest {
-            file: args.get("file").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            file: args
+                .get("file")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             expected_full_file: args
                 .get("expectedFullFile")
                 .and_then(|v| v.as_str())
@@ -211,13 +220,15 @@ fn read_message(stdin: &mut impl BufRead) -> io::Result<Option<Value>> {
     if let Some(len) = content_length {
         let mut buf = vec![0u8; len];
         stdin.read_exact(&mut buf)?;
-        let value = serde_json::from_slice(&buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let value = serde_json::from_slice(&buf)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         return Ok(Some(value));
     }
 
     // Fallback: newline-delimited JSON (handy for manual tests).
     if let Some(line) = headers.lines().find(|l| l.starts_with('{')) {
-        let value = serde_json::from_str(line).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let value = serde_json::from_str(line)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         return Ok(Some(value));
     }
     Ok(None)

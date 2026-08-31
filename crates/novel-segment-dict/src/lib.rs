@@ -70,7 +70,10 @@ fn load_tables() -> CjkTables {
         }
         if let Some(obj) = v.get("table_tw").and_then(|x| x.as_object()) {
             for (k, val) in obj {
-                if let (Some(from), Some(to)) = (k.chars().next(), val.as_str().and_then(|s| s.chars().next())) {
+                if let (Some(from), Some(to)) = (
+                    k.chars().next(),
+                    val.as_str().and_then(|s| s.chars().next()),
+                ) {
                     alias.entry(from).or_default().extend([from, to]);
                     alias.entry(to).or_default().extend([from, to]);
                 }
@@ -99,7 +102,9 @@ fn load_tables() -> CjkTables {
     let mut zhs2zht = HashMap::new();
     let mut zht2jp = HashMap::new();
     let mut zhs2jp = HashMap::new();
-    if let Ok(rows) = serde_json::from_str::<Vec<[String; 3]>>(include_str!("../data/jp-table-safe.json")) {
+    if let Ok(rows) =
+        serde_json::from_str::<Vec<[String; 3]>>(include_str!("../data/jp-table-safe.json"))
+    {
         for row in rows {
             let jp = row[0].chars().next();
             let zht = row[1].chars().next();
@@ -117,8 +122,16 @@ fn load_tables() -> CjkTables {
 
     let mut cn2tw = HashMap::new();
     let mut tw2cn = HashMap::new();
-    merge_opencc_pair(&mut cn2tw, &mut alias, &opencc_dir().join("STCharacters.txt"));
-    merge_opencc_pair(&mut tw2cn, &mut alias, &opencc_dir().join("TSCharacters.txt"));
+    merge_opencc_pair(
+        &mut cn2tw,
+        &mut alias,
+        &opencc_dir().join("STCharacters.txt"),
+    );
+    merge_opencc_pair(
+        &mut tw2cn,
+        &mut alias,
+        &opencc_dir().join("TSCharacters.txt"),
+    );
     for name in ["JPVariants.txt", "TWVariants.txt", "HKVariants.txt"] {
         merge_opencc_alias(&mut alias, &opencc_dir().join(name));
     }
@@ -142,8 +155,14 @@ fn load_tables() -> CjkTables {
     }
 }
 
-fn merge_opencc_pair(map: &mut HashMap<char, char>, alias: &mut HashMap<char, BTreeSet<char>>, path: &Path) {
-    let Ok(text) = std::fs::read_to_string(path) else { return };
+fn merge_opencc_pair(
+    map: &mut HashMap<char, char>,
+    alias: &mut HashMap<char, BTreeSet<char>>,
+    path: &Path,
+) {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return;
+    };
     for line in text.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -151,9 +170,14 @@ fn merge_opencc_pair(map: &mut HashMap<char, char>, alias: &mut HashMap<char, BT
         }
         let mut parts = line.split('\t');
         let Some(src) = parts.next() else { continue };
-        let Some(from) = src.chars().next() else { continue };
+        let Some(from) = src.chars().next() else {
+            continue;
+        };
         let Some(dsts) = parts.next() else { continue };
-        let dests: Vec<char> = dsts.split_whitespace().filter_map(|s| s.chars().next()).collect();
+        let dests: Vec<char> = dsts
+            .split_whitespace()
+            .filter_map(|s| s.chars().next())
+            .collect();
         if let Some(&first) = dests.first() {
             map.entry(from).or_insert(first);
         }
@@ -167,7 +191,9 @@ fn merge_opencc_pair(map: &mut HashMap<char, char>, alias: &mut HashMap<char, BT
 }
 
 fn merge_opencc_alias(map: &mut HashMap<char, BTreeSet<char>>, path: &Path) {
-    let Ok(text) = std::fs::read_to_string(path) else { return };
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return;
+    };
     for line in text.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -176,7 +202,9 @@ fn merge_opencc_alias(map: &mut HashMap<char, BTreeSet<char>>, path: &Path) {
         let mut parts = line.split('\t');
         let Some(src) = parts.next() else { continue };
         let Some(dsts) = parts.next() else { continue };
-        let Some(from) = src.chars().next() else { continue };
+        let Some(from) = src.chars().next() else {
+            continue;
+        };
         for dest in dsts.split_whitespace() {
             if let Some(to) = dest.chars().next() {
                 map.entry(from).or_default().insert(to);
@@ -228,7 +256,9 @@ pub fn text_list(word: &str) -> Vec<String> {
     }
     let chars: Vec<char> = word.chars().collect();
     let opts: Vec<Vec<char>> = chars.iter().map(|c| auto_char(*c)).collect();
-    let product = opts.iter().try_fold(1usize, |acc, o| acc.checked_mul(o.len()));
+    let product = opts
+        .iter()
+        .try_fold(1usize, |acc, o| acc.checked_mul(o.len()));
     if product.map(|p| p > 65_536).unwrap_or(true) {
         return arr_cjk(std::iter::once(word)).into_iter().collect();
     }

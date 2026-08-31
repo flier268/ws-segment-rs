@@ -244,13 +244,7 @@ impl Segment {
             for (canon, vars) in load_synonym_file(&file)? {
                 self.synonym.add(&canon, &vars, skip_exists);
                 // Phrase synonyms must be tokenizable (word.novel: 恐怖分子 → 恐怖份子).
-                if let Some(e) = self.table.table.get(&canon).cloned() {
-                    for v in &vars {
-                        if !self.table.table.contains_key(v) {
-                            self.table.add(v, e.p, e.f, false);
-                        }
-                    }
-                }
+                self.copy_synonym_variants_into_table(&canon, &vars);
             }
         }
         self.inited = true;
@@ -362,14 +356,18 @@ impl Segment {
     pub fn add_synonym(&mut self, canonical: &str, variants: &[&str]) -> &mut Self {
         let vars: Vec<String> = variants.iter().map(|s| (*s).to_string()).collect();
         self.synonym.add(canonical, &vars, false);
+        self.copy_synonym_variants_into_table(canonical, &vars);
+        self
+    }
+
+    fn copy_synonym_variants_into_table(&mut self, canonical: &str, vars: &[String]) {
         if let Some(e) = self.table.table.get(canonical).cloned() {
-            for v in &vars {
+            for v in vars {
                 if !self.table.table.contains_key(v) {
                     self.table.add(v, e.p, e.f, false);
                 }
             }
         }
-        self
     }
 
     pub fn do_segment(&self, text: &str, options: DoSegmentOptions) -> Vec<Word> {

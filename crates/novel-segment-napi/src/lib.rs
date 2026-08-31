@@ -71,8 +71,15 @@ impl NativeSegment {
     }
 
     #[napi]
-    pub fn do_segment(&self, text: String, options: Option<JsDoSegmentOptions>) -> Result<Vec<JsWord>> {
-        let seg = self.inner.lock().map_err(|e| Error::from_reason(e.to_string()))?;
+    pub fn do_segment(
+        &self,
+        text: String,
+        options: Option<JsDoSegmentOptions>,
+    ) -> Result<Vec<JsWord>> {
+        let seg = self
+            .inner
+            .lock()
+            .map_err(|e| Error::from_reason(e.to_string()))?;
         let opts = options
             .map(|o| DoSegmentOptions {
                 simple: o.simple,
@@ -95,7 +102,11 @@ impl NativeSegment {
     }
 
     #[napi]
-    pub fn do_segment_simple(&self, text: String, options: Option<JsDoSegmentOptions>) -> Result<Vec<String>> {
+    pub fn do_segment_simple(
+        &self,
+        text: String,
+        options: Option<JsDoSegmentOptions>,
+    ) -> Result<Vec<String>> {
         Ok(self
             .do_segment(text, options)?
             .into_iter()
@@ -110,14 +121,20 @@ impl NativeSegment {
 
     #[napi]
     pub fn add_word(&self, spec: String, p: Option<u32>, f: Option<f64>) -> Result<()> {
-        let mut seg = self.inner.lock().map_err(|e| Error::from_reason(e.to_string()))?;
+        let mut seg = self
+            .inner
+            .lock()
+            .map_err(|e| Error::from_reason(e.to_string()))?;
         seg.add_word(&spec, p, f).map_err(map_err)?;
         Ok(())
     }
 
     #[napi]
     pub fn add_synonym(&self, canonical: String, variants: Vec<String>) -> Result<()> {
-        let mut seg = self.inner.lock().map_err(|e| Error::from_reason(e.to_string()))?;
+        let mut seg = self
+            .inner
+            .lock()
+            .map_err(|e| Error::from_reason(e.to_string()))?;
         let refs: Vec<&str> = variants.iter().map(|s| s.as_str()).collect();
         seg.add_synonym(&canonical, &refs);
         Ok(())
@@ -125,7 +142,10 @@ impl NativeSegment {
 
     #[napi]
     pub fn add_blacklist(&self, word: String) -> Result<()> {
-        let mut seg = self.inner.lock().map_err(|e| Error::from_reason(e.to_string()))?;
+        let mut seg = self
+            .inner
+            .lock()
+            .map_err(|e| Error::from_reason(e.to_string()))?;
         seg.add_blacklist(&word);
         Ok(())
     }

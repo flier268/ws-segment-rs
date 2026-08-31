@@ -13,8 +13,13 @@ use std::process;
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
-    if args.iter().any(|a| a == "-h" || a == "--help") && args.first().map(|s| s.as_str()) != Some("process") {
-        if matches!(args.first().map(|s| s.as_str()), Some("serve") | Some("mcp") | Some("process")) {
+    if args.iter().any(|a| a == "-h" || a == "--help")
+        && args.first().map(|s| s.as_str()) != Some("process")
+    {
+        if matches!(
+            args.first().map(|s| s.as_str()),
+            Some("serve") | Some("mcp") | Some("process")
+        ) {
             // fall through to subcommand help
         } else {
             print_help();
@@ -317,9 +322,7 @@ fn parse_expected(s: &str) -> Vec<ExpectedItem> {
 }
 
 fn flag_value(args: &[String], name: &str) -> Option<String> {
-    args.windows(2)
-        .find(|w| w[0] == name)
-        .map(|w| w[1].clone())
+    args.windows(2).find(|w| w[0] == name).map(|w| w[1].clone())
 }
 
 fn print_help() {

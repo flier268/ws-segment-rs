@@ -125,6 +125,11 @@ pub fn is_newline_only(s: &str) -> bool {
 /// Repeated-prefix match for `^((.+)\2{5,})` (same chunk 6+ times).
 pub fn leading_repeat_run(text: &str) -> Option<usize> {
     let units: Vec<u16> = text.encode_utf16().collect();
+    leading_repeat_run_units(&units)
+}
+
+/// Same as [`leading_repeat_run`] on an already-materialized UTF-16 buffer.
+pub fn leading_repeat_run_units(units: &[u16]) -> Option<usize> {
     let n = units.len();
     if n < 6 {
         return None;

@@ -28,6 +28,32 @@ ws-segment-rs = { version = "0.1", default-features = false }
 
 字典根目錄可用環境變數 `NOVEL_SEGMENT_DICT_ROOT` 覆寫（預設為倉庫內 `packages/segment-dict/dict`）。
 
+## DictTokenizer 路徑搜尋
+
+`DictTokenizer` 用詞庫重疊詞組成切法，再用 MMSEG 式的 `Assess`／`get_tops` 打分（詞數、平均詞頻、詞長變異、未知詞、相鄰詞加分）。
+
+JS／舊 Rust 對**整段**做 `get_chunks` 枚舉，未切開的長漢字會指數展開，記憶體與時間都會爆。Rust 現在依**目前這一段**的 UTF-16 長度分流（不是把詞從中間硬切）：
+
+| 段長 | 作法 |
+| --- | --- |
+| ≤ `DICT_ENUM_MAX_SPAN`（24） | 仍走原本 `get_chunks` 枚舉，對齊 JS 短句結果 |
+| > 24 | DAG beam search 留下存活路徑，再套同一套 Assess／`get_tops`（不是對全部路徑做精確 `get_tops`） |
+
+長段每個字位置最多留下一批存活狀態（預設 **64**）。打分本來就強烈偏好較少詞，多留下的多半是較差路徑。上限在每次長段搜尋開始時讀一次環境變數（執行中改 env 不會影響已在跑的搜尋；改完請重啟使用此 crate 的程式）：
+
+```bash
+# 同一段長文多跑幾次，比輸出是否還變、時間是否還掉
+WS_SEGMENT_MAX_STATES=16
+WS_SEGMENT_MAX_STATES=64   # 預設
+WS_SEGMENT_MAX_STATES=256
+```
+
+- 64 與 256 輸出相同、64 比較快 → 64 夠用，略鬆  
+- 64 與 256 輸出不同 → 64 太緊，提高到兩邊一樣為止  
+- 上限打滿只代表該位置候選很多，不代表結果一定不穩  
+
+`SegmentOptions::max_chunk_count`／`min_chunk_count`（JS 預設 40／30）**只影響短段枚舉**；長段 DP 不走這兩個上限。
+
 ## 使用
 
 ```rust
@@ -56,6 +82,8 @@ fn main() -> Result<(), novel_segment::Error> {
 ```
 
 `DoSegmentOptions` 對應 JS `doSegment`：`simple`、`strip_punctuation`、`convert_synonym`、`strip_stopword`、`strip_space`。
+
+`add_synonym` 會把錯字寫進詞表，並在 `convert_synonym` 同一趟改成正字。
 
 預設會回傳所有字元（含換行與空白），與 JS 2.x 相同。
 

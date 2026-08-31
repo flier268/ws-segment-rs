@@ -24,6 +24,7 @@
 mod colors;
 mod datetime;
 mod dict;
+mod dict_path;
 mod error;
 mod loader;
 mod names;
