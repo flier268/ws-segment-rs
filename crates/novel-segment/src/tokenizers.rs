@@ -11,12 +11,14 @@ use crate::postag::POSTAG;
 use crate::segment::Segment;
 use crate::stopword::STOPWORD2;
 use crate::text::{
-    char_at, char_len, char_slice, char_substr_from, leading_repeat_run, slice_chars, slice_utf16,
+    char_at, char_len, char_slice, char_substr_from, hit_text, leading_repeat_run_units,
+    slice_chars, slice_utf16, utf16_byte_of,
 };
+use crate::trie::DictHit;
 use crate::word::Word;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub fn builtin_tokenizers() -> Vec<Box<dyn Tokenizer>> {
     vec![
@@ -144,21 +146,14 @@ fn split_wildcard(text: &str, seg: &Segment) -> Option<Vec<Word>> {
         return None;
     }
     let lower = text.to_lowercase();
-    let n = char_len(text);
+    let units: Vec<u16> = lower.encode_utf16().collect();
+    let n = units.len();
     let mut hits = Vec::new();
     let mut cur = 0usize;
     while cur < n {
-        let mut best: Option<(usize, String)> = None;
-        for (len, bucket) in &table.table2 {
-            let piece = char_slice(&lower, cur, *len);
-            if bucket.contains_key(&piece) {
-                best = Some((cur, char_slice(text, cur, *len)));
-            }
-        }
-        if let Some((c, w)) = best {
-            let step = char_len(&w);
-            hits.push((c, w));
-            cur += step;
+        if let Some(len) = table.longest_from(&units, cur) {
+            hits.push((cur, char_slice(text, cur, len)));
+            cur += len;
         } else {
             cur += 1;
         }
@@ -377,8 +372,9 @@ pub(crate) const DICT_ENUM_MAX_SPAN: usize = 24;
 
 /// Dictionary tokenizer (MMSEG-style scoring).
 ///
-/// Spans longer than [`DICT_ENUM_MAX_SPAN`] use `dict_path` DAG search instead of
-/// enumerating `get_chunks`. See the crate README.
+/// Dictionary hits come from the UTF-16 trie on `TableDict`. Spans longer than
+/// [`DICT_ENUM_MAX_SPAN`] use `dict_path` DAG search instead of enumerating
+/// `get_chunks`. See the crate README.
 pub struct DictTokenizer;
 
 impl Tokenizer for DictTokenizer {
@@ -433,59 +429,44 @@ impl Tokenizer for DictTokenizer {
     }
 }
 
-fn match_word(text: &str, mut cur: usize, preword: Option<&Word>, seg: &Segment) -> Vec<Word> {
-    let n = char_len(text);
-    let mut ret = Vec::new();
-    if crate::text::is_bmp(text) {
-        let chars: Vec<char> = text.chars().collect();
-        while cur < n {
-            for (len, bucket) in &seg.table.table2 {
-                if let Some(w) = slice_chars(&chars, cur, *len) {
-                    if let Some(e) = bucket.get(&w) {
-                        ret.push(Word {
-                            w,
-                            c: Some(cur),
-                            f: Some(e.f),
-                            ..Default::default()
-                        });
-                    }
-                }
-            }
-            cur += 1;
-        }
-    } else {
-        let units: Vec<u16> = text.encode_utf16().collect();
-        while cur < n {
-            for (len, bucket) in &seg.table.table2 {
-                if let Some(w) = slice_utf16(&units, cur, *len) {
-                    if let Some(e) = bucket.get(&w) {
-                        ret.push(Word {
-                            w,
-                            c: Some(cur),
-                            f: Some(e.f),
-                            ..Default::default()
-                        });
-                    }
-                }
-            }
-            cur += 1;
-        }
+fn match_word(text: &str, cur: usize, preword: Option<&Word>, seg: &Segment) -> Vec<Word> {
+    let units: Vec<u16> = text.encode_utf16().collect();
+    let mut hits = Vec::new();
+    for start in cur..units.len() {
+        hits.extend(seg.table.hits_from(&units, start));
     }
-    filter_word(ret, preword, text, seg)
+    filter_word(hits, preword, text, &units, seg)
 }
 
-fn filter_word(words: Vec<Word>, preword: Option<&Word>, text: &str, seg: &Segment) -> Vec<Word> {
-    if words.is_empty() && text.is_empty() {
-        return words;
+fn filter_word(
+    hits: Vec<DictHit>,
+    preword: Option<&Word>,
+    text: &str,
+    units: &[u16],
+    seg: &Segment,
+) -> Vec<Word> {
+    if hits.is_empty() && text.is_empty() {
+        return Vec::new();
     }
-    let wordpos = get_pos_info(&words, text);
+    let wordpos = get_pos_info(&hits, units.len());
     // Enumerating get_chunks is exponential past this span length.
-    if char_len(text) > DICT_ENUM_MAX_SPAN {
-        let mut curr = crate::dict_path::best_path(&wordpos, text, preword, seg);
+    let materialized = materialize_pos(&wordpos, text, units);
+    if units.len() > DICT_ENUM_MAX_SPAN {
+        let mut curr = crate::dict_path::best_path(&materialized, text, preword, seg);
         curr.retain(|w| seg.table.table.contains_key(&w.w));
         return curr;
     }
-    let chunks = get_chunks(&wordpos, 0, text, 0, None, seg);
+    let mut memo = HashMap::new();
+    let chunks = get_chunks(
+        &materialized,
+        0,
+        text,
+        units,
+        0,
+        None,
+        seg,
+        &mut memo,
+    );
     if chunks.is_empty() {
         return Vec::new();
     }
@@ -498,43 +479,54 @@ fn filter_word(words: Vec<Word>, preword: Option<&Word>, text: &str, seg: &Segme
     curr
 }
 
-fn get_pos_info(words: &[Word], text: &str) -> Vec<Vec<Word>> {
-    let n = char_len(text);
-    let mut wordpos: Vec<Vec<Word>> = vec![Vec::new(); n + 1];
-    for word in words {
-        if let Some(c) = word.c {
-            if c < wordpos.len() {
-                wordpos[c].push(word.clone());
-            }
+fn get_pos_info(hits: &[DictHit], n: usize) -> Vec<Vec<DictHit>> {
+    let mut wordpos: Vec<Vec<DictHit>> = vec![Vec::new(); n + 1];
+    for &hit in hits {
+        if hit.start < wordpos.len() {
+            wordpos[hit.start].push(hit);
         }
     }
     for i in 0..n {
         if wordpos[i].is_empty() {
-            if let Some(ch) = char_at(text, i) {
-                wordpos[i].push(Word::new(ch.to_string()).with_c(i).with_f(0.0));
-            } else {
-                // Surrogate / non-decodable UTF-16 unit: still expose a 1-unit edge.
-                let unit = char_slice(text, i, 1);
-                if !unit.is_empty() {
-                    wordpos[i].push(Word::new(unit).with_c(i).with_f(0.0));
-                }
-            }
+            wordpos[i].push(DictHit {
+                start: i,
+                len: 1,
+                f: 0.0,
+            });
         }
     }
     wordpos
+}
+
+fn materialize_pos(wordpos: &[Vec<DictHit>], text: &str, units: &[u16]) -> Vec<Vec<Word>> {
+    let byte_of = utf16_byte_of(text);
+    wordpos
+        .iter()
+        .map(|hits| {
+            hits.iter()
+                .map(|h| {
+                    Word::new(hit_text(text, &byte_of, units, h.start, h.len).into_owned())
+                        .with_c(h.start)
+                        .with_f(h.f)
+                })
+                .collect()
+        })
+        .collect()
 }
 
 fn get_chunks(
     wordpos: &[Vec<Word>],
     pos: usize,
     text: &str,
+    units: &[u16],
     total_count: usize,
     max_chunk: Option<usize>,
     seg: &Segment,
+    memo: &mut HashMap<(usize, usize, usize), Vec<Vec<Word>>>,
 ) -> Vec<Vec<Word>> {
     let max_chunk_count = if total_count == 0 {
         let mut m = seg.max_chunk_count;
-        if char_len(text) < m {
+        if units.len().saturating_sub(pos) < m {
             m += 1;
         }
         m
@@ -548,41 +540,52 @@ fn get_chunks(
         max_chunk.unwrap_or(seg.max_chunk_count)
     };
 
-    if let Some(run) = leading_repeat_run(text) {
-        let s1 = char_slice(text, 0, run);
-        let s2 = char_substr_from(text, run);
-        let word = Word::new(s1).with_c(pos).with_f(0.0);
-        if s2.is_empty() {
-            return vec![vec![word]];
+    let key = (pos, total_count, max_chunk_count);
+    if let Some(cached) = memo.get(&key) {
+        return cached.clone();
+    }
+
+    if pos < units.len() {
+        if let Some(run) = leading_repeat_run_units(&units[pos..]) {
+            let s1 = char_slice(text, pos, run);
+            let word = Word::new(s1).with_c(pos).with_f(0.0);
+            let ret = if pos + run >= units.len() {
+                vec![vec![word]]
+            } else {
+                let chunks = get_chunks(
+                    wordpos,
+                    pos + run,
+                    text,
+                    units,
+                    total_count,
+                    Some(max_chunk_count),
+                    seg,
+                    memo,
+                );
+                chunks
+                    .into_iter()
+                    .map(|ws| {
+                        let mut v = vec![word.clone()];
+                        v.extend(ws);
+                        v
+                    })
+                    .collect()
+            };
+            memo.insert(key, ret.clone());
+            return ret;
         }
-        let chunks = get_chunks(
-            wordpos,
-            pos + run,
-            &s2,
-            total_count,
-            Some(max_chunk_count),
-            seg,
-        );
-        return chunks
-            .into_iter()
-            .map(|ws| {
-                let mut v = vec![word.clone()];
-                v.extend(ws);
-                v
-            })
-            .collect();
     }
 
     let total_count = total_count + 1;
-    let words = wordpos.get(pos).cloned().unwrap_or_default();
+    let words = wordpos.get(pos).map(Vec::as_slice).unwrap_or(&[]);
     let mut ret = Vec::new();
     for word in words {
         let nextcur = word.c.unwrap_or(pos) + char_len(&word.w);
         let next_exists = wordpos.get(nextcur).map(|v| !v.is_empty()).unwrap_or(false);
         if !next_exists {
-            ret.push(vec![word]);
+            ret.push(vec![word.clone()]);
         } else if total_count > max_chunk_count {
-            let mut w1 = vec![word];
+            let mut w1 = vec![word.clone()];
             let mut j = nextcur;
             while let Some(bucket) = wordpos.get(j) {
                 if let Some(w2) = bucket.first() {
@@ -594,14 +597,15 @@ fn get_chunks(
             }
             ret.push(w1);
         } else {
-            let t = char_substr_from(text, char_len(&word.w));
             let chunks = get_chunks(
                 wordpos,
                 nextcur,
-                &t,
+                text,
+                units,
                 total_count,
                 Some(max_chunk_count),
                 seg,
+                memo,
             );
             for ws in chunks {
                 let mut v = vec![word.clone()];
@@ -610,7 +614,7 @@ fn get_chunks(
             }
         }
     }
-    let _ = max_chunk_count;
+    memo.insert(key, ret.clone());
     ret
 }
 

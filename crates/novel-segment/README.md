@@ -32,11 +32,13 @@ ws-segment-rs = { version = "0.1", default-features = false }
 
 `DictTokenizer` 用詞庫重疊詞組成切法，再用 MMSEG 式的 `Assess`／`get_tops` 打分（詞數、平均詞頻、詞長變異、未知詞、相鄰詞加分）。
 
+詞庫匹配走 UTF-16 trie（每個位置沿前綴往下走，只在真正成詞時才取出）。短段 `get_chunks` 有 memo。
+
 JS／舊 Rust 對**整段**做 `get_chunks` 枚舉，未切開的長漢字會指數展開，記憶體與時間都會爆。Rust 現在依**目前這一段**的 UTF-16 長度分流（不是把詞從中間硬切）：
 
 | 段長 | 作法 |
 | --- | --- |
-| ≤ `DICT_ENUM_MAX_SPAN`（24） | 仍走原本 `get_chunks` 枚舉，對齊 JS 短句結果 |
+| ≤ `DICT_ENUM_MAX_SPAN`（24） | 仍走原本 `get_chunks` 枚舉（有 memo），對齊 JS 短句結果 |
 | > 24 | DAG beam search 留下存活路徑，再套同一套 Assess／`get_tops`（不是對全部路徑做精確 `get_tops`） |
 
 長段每個字位置最多留下一批存活狀態（預設 **64**）。打分本來就強烈偏好較少詞，多留下的多半是較差路徑。上限在每次長段搜尋開始時讀一次環境變數（執行中改 env 不會影響已在跑的搜尋；改完請重啟使用此 crate 的程式）：

@@ -83,6 +83,69 @@ pub fn slice_utf16(units: &[u16], start: usize, len: usize) -> Option<String> {
     }
 }
 
+/// UTF-16 unit index → UTF-8 byte offset, plus `s.len()` at the end.
+///
+/// Both units of a non-BMP character share the same byte. A span that starts or
+/// ends on only one of those units is not a complete character and must not be
+/// borrowed as UTF-8 (`slice_utf16_str` returns `""`).
+pub fn utf16_byte_of(s: &str) -> Vec<usize> {
+    let mut byte_of = Vec::with_capacity(s.len() + 1);
+    for (i, ch) in s.char_indices() {
+        byte_of.push(i);
+        if ch.len_utf16() == 2 {
+            byte_of.push(i);
+        }
+    }
+    byte_of.push(s.len());
+    byte_of
+}
+
+/// Borrow the UTF-8 slice covering `len` UTF-16 units at `start`. Empty if the
+/// span is out of range or splits a surrogate pair.
+#[inline]
+pub fn slice_utf16_str<'a>(s: &'a str, byte_of: &[usize], start: usize, len: usize) -> &'a str {
+    let end = match start.checked_add(len) {
+        Some(end) => end,
+        None => return "",
+    };
+    if end >= byte_of.len() || start >= byte_of.len() {
+        return "";
+    }
+    // Trailing unit of a pair shares the previous unit's byte.
+    if start > 0 && byte_of[start] == byte_of[start - 1] {
+        return "";
+    }
+    // Exclusive `end` on a trailing unit means the span stopped after the leading half.
+    if end > 0 && byte_of[end] == byte_of[end - 1] {
+        return "";
+    }
+    let b0 = byte_of[start];
+    let b1 = byte_of[end];
+    if b0 >= b1 || b1 > s.len() {
+        ""
+    } else {
+        &s[b0..b1]
+    }
+}
+
+/// UTF-16 span as text. Borrows the original string for complete characters.
+pub fn hit_text<'a>(
+    s: &'a str,
+    byte_of: &[usize],
+    units: &[u16],
+    start: usize,
+    len: usize,
+) -> std::borrow::Cow<'a, str> {
+    let borrowed = slice_utf16_str(s, byte_of, start, len);
+    if !borrowed.is_empty() || len == 0 {
+        std::borrow::Cow::Borrowed(borrowed)
+    } else {
+        let end = start.saturating_add(len).min(units.len());
+        let start = start.min(end);
+        std::borrow::Cow::Owned(String::from_utf16_lossy(&units[start..end]))
+    }
+}
+
 /// JS `charAt`: one UTF-16 unit. BMP CJK is a single `char`.
 pub fn char_at(s: &str, i: usize) -> Option<char> {
     if s.is_ascii() {
@@ -123,12 +186,6 @@ pub fn is_newline_only(s: &str) -> bool {
 }
 
 /// Repeated-prefix match for `^((.+)\2{5,})` (same chunk 6+ times).
-pub fn leading_repeat_run(text: &str) -> Option<usize> {
-    let units: Vec<u16> = text.encode_utf16().collect();
-    leading_repeat_run_units(&units)
-}
-
-/// Same as [`leading_repeat_run`] on an already-materialized UTF-16 buffer.
 pub fn leading_repeat_run_units(units: &[u16]) -> Option<usize> {
     let n = units.len();
     if n < 6 {
@@ -216,6 +273,25 @@ mod tests {
     #[test]
     fn repeat_run() {
         let s = "啊啊啊啊啊啊啊啊x";
-        assert_eq!(leading_repeat_run(s), Some(8));
+        let units: Vec<u16> = s.encode_utf16().collect();
+        assert_eq!(leading_repeat_run_units(&units), Some(8));
+    }
+
+    #[test]
+    fn utf16_byte_of_bmp_and_emoji() {
+        let s = "里面😀a";
+        let byte_of = utf16_byte_of(s);
+        let units: Vec<u16> = s.encode_utf16().collect();
+        assert_eq!(slice_utf16_str(s, &byte_of, 0, 2), "里面");
+        assert_eq!(slice_utf16_str(s, &byte_of, 2, 2), "😀");
+        assert_eq!(slice_utf16_str(s, &byte_of, 4, 1), "a");
+        assert_eq!(slice_utf16_str(s, &byte_of, 2, 1), "");
+        assert_eq!(slice_utf16_str(s, &byte_of, 3, 1), "");
+        assert_eq!(slice_utf16_str(s, &byte_of, 0, 3), "");
+        assert_eq!(hit_text(s, &byte_of, &units, 0, 2).as_ref(), "里面");
+        let low = hit_text(s, &byte_of, &units, 3, 1);
+        assert_eq!(char_len(low.as_ref()), 1);
+        assert_ne!(low.as_ref(), "😀");
+        assert_eq!(char_len(s) + 1, byte_of.len());
     }
 }

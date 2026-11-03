@@ -1,10 +1,11 @@
 //! Dictionary tables.
 
+use crate::trie::{DictHit, WordTrie};
 use crate::word::Word;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 /// One dictionary row.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct DictEntry {
     pub p: u32,
     pub f: f64,
@@ -22,12 +23,11 @@ impl From<&DictEntry> for Word {
     }
 }
 
-/// Main word table + length buckets (`TABLE` / `TABLE2`).
+/// Main word table (`TABLE`) plus a UTF-16 trie for span matching.
 #[derive(Clone, Debug, Default)]
 pub struct TableDict {
     pub table: HashMap<String, DictEntry>,
-    /// Length → word → entry. `BTreeMap` so iteration matches JS integer-key order.
-    pub table2: BTreeMap<usize, HashMap<String, DictEntry>>,
+    pub(crate) trie: WordTrie,
 }
 
 impl TableDict {
@@ -45,10 +45,9 @@ impl TableDict {
         if w.is_empty() {
             return;
         }
-        let len = crate::text::char_len(&w);
         let entry = DictEntry { p, f, s };
-        self.table.insert(w.clone(), entry.clone());
-        self.table2.entry(len).or_default().insert(w, entry);
+        self.trie.insert(&w, entry);
+        self.table.insert(w, entry);
     }
 
     pub fn add_with_cjk(&mut self, w: &str, p: u32, f: f64, auto_cjk: bool) {
@@ -69,19 +68,28 @@ impl TableDict {
 
     pub fn remove(&mut self, w: &str) {
         if self.table.remove(w).is_some() {
-            let len = crate::text::char_len(w);
-            if let Some(bucket) = self.table2.get_mut(&len) {
-                bucket.remove(w);
-                if bucket.is_empty() {
-                    self.table2.remove(&len);
-                }
-            }
+            self.trie.remove(w);
         }
     }
 
     #[allow(dead_code)]
     pub fn size(&self) -> usize {
         self.table.len()
+    }
+
+    pub(crate) fn hits_from(&self, units: &[u16], start: usize) -> Vec<DictHit> {
+        self.trie
+            .matches_from(units, start)
+            .map(|(len, e)| DictHit {
+                start,
+                len,
+                f: e.f,
+            })
+            .collect()
+    }
+
+    pub(crate) fn longest_from(&self, units: &[u16], start: usize) -> Option<usize> {
+        self.trie.longest_from(units, start)
     }
 }
 
@@ -137,6 +145,23 @@ mod tests {
         d.add("另", &["正".into()], false);
         assert_eq!(d.get("正"), None);
         assert_eq!(d.get("甲"), Some("正"));
+    }
+
+    #[test]
+    fn table_trie_hits_match_table() {
+        let mut t = TableDict::new();
+        t.add("中", 1, 1.0, true);
+        t.add("中国", 1, 2.0, true);
+        let units: Vec<u16> = "中国人".encode_utf16().collect();
+        let hits: Vec<(usize, usize, f64)> = t
+            .hits_from(&units, 0)
+            .into_iter()
+            .map(|h| (h.start, h.len, h.f))
+            .collect();
+        assert_eq!(hits, vec![(0, 1, 1.0), (0, 2, 2.0)]);
+        t.remove("中国");
+        let hits: Vec<usize> = t.hits_from(&units, 0).into_iter().map(|h| h.len).collect();
+        assert_eq!(hits, vec![1]);
     }
 }
 

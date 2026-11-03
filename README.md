@@ -54,7 +54,7 @@ Fork From [leizongmin/segment](https://github.com/leizongmin/node-segment)
 4. 精簡一部分多餘字典
 5. 可額外追加字典條目而不需要增加字典檔
 6. 可將結果轉換為原始格式
-7. 遇到長句、無分段、無標點的行：Node／舊實作會捨棄部分處理以免時間與記憶體爆掉。**Rust `ws-segment-rs` 不再捨棄**：短段（≤24）仍枚舉以對齊 JS；更長的連續漢字改走 DAG beam search，再對存活路徑套同一套 Assess／`get_tops`（不硬切詞）。預設每位置最多 64 條存活路徑，可用 `WS_SEGMENT_MAX_STATES` 調整。詳見 [crates/novel-segment/README.md](crates/novel-segment/README.md)。Node 若仍走 JS，可於啟動時加 `node --max-old-space-size=2048 xxxx.js`。
+7. 遇到長句、無分段、無標點的行：Node／舊實作會捨棄部分處理以免時間與記憶體爆掉。**Rust `ws-segment-rs` 不再捨棄**：短段（≤24）仍枚舉以對齊 JS；更長的連續漢字改走 DAG beam search，再對存活路徑套同一套 Assess／`get_tops`（不硬切詞）。詞庫匹配走 UTF-16 trie。預設每位置最多 64 條存活路徑，可用 `WS_SEGMENT_MAX_STATES` 調整。詳見 [crates/novel-segment/README.md](crates/novel-segment/README.md)。Node 若仍走 JS，可於啟動時加 `node --max-old-space-size=2048 xxxx.js`。
 8. 與原版不同預設會返回所有字元(包含分行與空格)
 
 * [線上測試 by RunKit](https://npm.runkit.com/novel-segment)

@@ -37,6 +37,7 @@ mod service;
 mod stopword;
 mod text;
 mod tokenizers;
+mod trie;
 mod word;
 mod zht;
 
