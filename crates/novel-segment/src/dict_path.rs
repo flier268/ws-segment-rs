@@ -132,7 +132,7 @@ fn best_path_with_cap(
         .iter()
         .map(|chunk| assess_chunk(chunk, preword, text, seg))
         .collect();
-    chunks[get_tops(&assess)].clone()
+    chunks[get_tops_beam(&assess, n)].clone()
 }
 
 fn outgoing(wordpos: &[Vec<Word>], text: &str, units: &[u16], pos: usize) -> Vec<Word> {
@@ -469,10 +469,7 @@ fn last_bonus(pw: &Word, wp: u32) -> f64 {
     }
 }
 
-pub(crate) fn get_tops(assess: &[Assess]) -> usize {
-    if assess.is_empty() {
-        return 0;
-    }
+fn assess_extrema(assess: &[Assess]) -> Assess {
     let mut top = assess[0].clone();
     for ass in assess.iter().skip(1) {
         if ass.a > top.a {
@@ -491,23 +488,28 @@ pub(crate) fn get_tops(assess: &[Assess]) -> usize {
             top.x = ass.x;
         }
     }
-    let mut tops = Vec::with_capacity(assess.len());
-    for ass in assess {
-        let mut s = (top.x - ass.x) * 1.5;
-        if ass.a >= top.a {
-            s += 1.0;
-        }
-        if ass.b <= top.b {
-            s += 1.0;
-        }
-        s += top.c - ass.c;
-        s += if ass.d < 0.0 {
-            top.d + ass.d
-        } else {
-            ass.d - top.d
-        };
-        tops.push(s);
+    top
+}
+
+fn score_against(ass: &Assess, top: &Assess) -> f64 {
+    let mut s = (top.x - ass.x) * 1.5;
+    if ass.a >= top.a {
+        s += 1.0;
     }
+    if ass.b <= top.b {
+        s += 1.0;
+    }
+    s += top.c - ass.c;
+    s += if ass.d < 0.0 {
+        top.d + ass.d
+    } else {
+        ass.d - top.d
+    };
+    s
+}
+
+fn pick_tops(assess: &[Assess], top: &Assess) -> usize {
+    let tops: Vec<f64> = assess.iter().map(|ass| score_against(ass, top)).collect();
     let mut curri = 0usize;
     let mut maxs = tops[0];
     for (i, &s) in tops.iter().enumerate() {
@@ -541,6 +543,24 @@ pub(crate) fn get_tops(assess: &[Assess]) -> usize {
     curri
 }
 
+/// Like [`get_tops`], folding a unigram path (`x = n`, `b = 0`) into the extrema.
+fn get_tops_beam(assess: &[Assess], n: usize) -> usize {
+    if assess.is_empty() {
+        return 0;
+    }
+    let mut top = assess_extrema(assess);
+    top.x = top.x.max(n as f64);
+    top.b = top.b.min(0.0);
+    pick_tops(assess, &top)
+}
+
+pub(crate) fn get_tops(assess: &[Assess]) -> usize {
+    if assess.is_empty() {
+        return 0;
+    }
+    pick_tops(assess, &assess_extrema(assess))
+}
+
 #[cfg(test)]
 struct MaxStatesOverride {
     prev: usize,
@@ -568,7 +588,7 @@ impl Drop for MaxStatesOverride {
 #[cfg(test)]
 mod tests {
     use super::{
-        MaxStatesOverride, DEFAULT_MAX_STATES_PER_POS, MAX_SLOT_SEEN, PRUNE_EVENTS,
+        Assess, MaxStatesOverride, DEFAULT_MAX_STATES_PER_POS, MAX_SLOT_SEEN, PRUNE_EVENTS,
     };
     use crate::{DoSegmentOptions, Segment};
     use std::sync::atomic::Ordering;
@@ -576,6 +596,59 @@ mod tests {
 
     fn seg() -> Segment {
         Segment::with_novel_default().expect("load dict")
+    }
+
+    #[test]
+    fn long_span_keeps_chongshangqian_and_faqi() {
+        let seg = seg();
+        let text = "之前一直觉得自己碍事的外围士兵们不顾死活地冲上前发起进攻。";
+        assert!(
+            crate::text::char_len(text) > crate::tokenizers::DICT_ENUM_MAX_SPAN,
+            "fixture must take the long path"
+        );
+        let words = seg.do_segment_simple(text, DoSegmentOptions::convert_synonym());
+        assert!(
+            words.iter().any(|w| w == "衝上前"),
+            "expected token 衝上前; tokens={words:?}"
+        );
+        assert!(
+            words.iter().any(|w| w == "發起"),
+            "expected token 發起; tokens={words:?}"
+        );
+    }
+
+    #[test]
+    fn beam_unigram_envelope_prefers_fewer_words() {
+        // Third path steals unique max-a; unique min-b then prefers the longer
+        // cut unless unigram `b = 0` is in the extrema.
+        let chong = Assess {
+            x: 15.0,
+            a: 1304.93,
+            b: 0.2489,
+            c: 0.0,
+            d: 1.0,
+        };
+        let qianfa = Assess {
+            x: 16.0,
+            a: 1289.75,
+            b: 0.1875,
+            c: 0.0,
+            d: 2.0,
+        };
+        let high_a = Assess {
+            x: 17.0,
+            a: 1448.70,
+            b: 0.2284,
+            c: 0.0,
+            d: 2.0,
+        };
+        let assess = [chong, qianfa, high_a];
+        assert_eq!(super::get_tops(&assess), 1, "raw get_tops keeps the min-b path");
+        assert_eq!(
+            super::get_tops_beam(&assess, 28),
+            0,
+            "unigram envelope restores the fewer-word path"
+        );
     }
 
     #[test]
