@@ -453,6 +453,7 @@ fn filter_word(
     let materialized = materialize_pos(&wordpos, text, units);
     if units.len() > DICT_ENUM_MAX_SPAN {
         let mut curr = crate::dict_path::best_path(&materialized, text, preword, seg);
+        curr = refine_merged_chunks(curr, preword, seg);
         curr.retain(|w| seg.table.table.contains_key(&w.w));
         return curr;
     }
@@ -477,6 +478,77 @@ fn filter_word(
     let mut curr = chunks[crate::dict_path::get_tops(&assess)].clone();
     curr.retain(|w| seg.table.table.contains_key(&w.w));
     curr
+}
+
+/// After beam search, re-enumerate token windows that still fit in a short span
+/// and keep a cut only when it uses fewer words (MMSEG's strongest signal).
+///
+/// Only windows that still contain a unigram are enumerated. All-multichar
+/// windows are already locally coarse; re-running `get_chunks` on them was
+/// most of the long-span cost and did not change measured output.
+///
+/// `match_word` writes `Word.c` relative to the window. `DictTokenizer::split`
+/// reads `c` as an offset in the parent span and gap-fills from the original
+/// text, so each accepted cut is rewritten onto the parent cursor.
+fn refine_merged_chunks(
+    mut path: Vec<Word>,
+    preword: Option<&Word>,
+    seg: &Segment,
+) -> Vec<Word> {
+    const MAX_WINDOW_TOKENS: usize = 6;
+    if path.len() < 2 || path.iter().all(|w| char_len(&w.w) != 1) {
+        return path;
+    }
+    let mut i = 0usize;
+    let mut origin = 0usize;
+    while i < path.len() {
+        let mut best: Option<(usize, Vec<Word>)> = None;
+        let mut span = 0usize;
+        let mut has_unigram = false;
+        let prev = if i == 0 {
+            preword
+        } else {
+            path.get(i - 1)
+        };
+        let last = (i + MAX_WINDOW_TOKENS).min(path.len());
+        for j in i..last {
+            let token_len = char_len(&path[j].w);
+            span += token_len;
+            has_unigram |= token_len == 1;
+            if span > DICT_ENUM_MAX_SPAN {
+                break;
+            }
+            if j == i || !has_unigram {
+                continue;
+            }
+            let sub: String = path[i..=j].iter().map(|w| w.w.as_str()).collect();
+            let mut exact = match_word(&sub, 0, prev, seg);
+            if exact.is_empty() || exact.len() >= j - i + 1 {
+                continue;
+            }
+            let rebuilt: String = exact.iter().map(|w| w.w.as_str()).collect();
+            if rebuilt != sub {
+                continue;
+            }
+            let mut off = origin;
+            for w in &mut exact {
+                w.c = Some(off);
+                off += char_len(&w.w);
+            }
+            best = Some((j, exact));
+        }
+        if let Some((j, exact)) = best {
+            let new_len = exact.len();
+            let consumed: usize = path[i..=j].iter().map(|w| char_len(&w.w)).sum();
+            path.splice(i..=j, exact);
+            i += new_len;
+            origin += consumed;
+        } else {
+            origin += char_len(&path[i].w);
+            i += 1;
+        }
+    }
+    path
 }
 
 fn get_pos_info(hits: &[DictHit], n: usize) -> Vec<Vec<DictHit>> {

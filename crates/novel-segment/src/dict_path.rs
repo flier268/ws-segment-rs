@@ -543,14 +543,21 @@ fn pick_tops(assess: &[Assess], top: &Assess) -> usize {
     curri
 }
 
-/// Like [`get_tops`], folding a unigram path (`x = n`, `b = 0`) into the extrema.
+/// Rank beam survivors against a fixed unigram envelope, not the survivor set.
+///
+/// Full `get_chunks` always includes unigrams (`x = n`, `b = 0`). Unique max-`a`
+/// among survivors is set-dependent and can flip a near-tie; it is omitted here.
 fn get_tops_beam(assess: &[Assess], n: usize) -> usize {
     if assess.is_empty() {
         return 0;
     }
-    let mut top = assess_extrema(assess);
-    top.x = top.x.max(n as f64);
-    top.b = top.b.min(0.0);
+    let top = Assess {
+        x: n as f64,
+        a: f64::INFINITY,
+        b: 0.0,
+        c: 0.0,
+        d: 0.0,
+    };
     pick_tops(assess, &top)
 }
 
@@ -618,9 +625,22 @@ mod tests {
     }
 
     #[test]
+    fn long_span_unigram_refine_merges_najiushi() {
+        let seg = seg();
+        let text = "「難道又是老樣子藏在了大自然的險要之地里？如果是這樣的話那就是南洋的海底或者是世界盡頭之壁了啊」";
+        assert!(
+            crate::text::char_len(text) > crate::tokenizers::DICT_ENUM_MAX_SPAN,
+            "fixture must take the long path"
+        );
+        let words = seg.do_segment_simple(text, DoSegmentOptions::default());
+        assert!(
+            words.iter().any(|w| w == "那就是"),
+            "unigram refine should merge 那/就是; tokens={words:?}"
+        );
+    }
+
+    #[test]
     fn beam_unigram_envelope_prefers_fewer_words() {
-        // Third path steals unique max-a; unique min-b then prefers the longer
-        // cut unless unigram `b = 0` is in the extrema.
         let chong = Assess {
             x: 15.0,
             a: 1304.93,
@@ -649,6 +669,29 @@ mod tests {
             0,
             "unigram envelope restores the fewer-word path"
         );
+    }
+
+    #[test]
+    fn beam_ranking_ignores_survivor_extrema() {
+        // Longer path uniquely has max-a and min-b among survivors. Raw get_tops
+        // awards both +1 and prefers it; the fixed envelope does not.
+        let few = Assess {
+            x: 15.0,
+            a: 1000.0,
+            b: 0.30,
+            c: 0.0,
+            d: 2.0,
+        };
+        let long = Assess {
+            x: 16.0,
+            a: 2000.0,
+            b: 0.20,
+            c: 0.0,
+            d: 2.0,
+        };
+        let assess = [few, long];
+        assert_eq!(super::get_tops(&assess), 1);
+        assert_eq!(super::get_tops_beam(&assess, 28), 0);
     }
 
     #[test]
