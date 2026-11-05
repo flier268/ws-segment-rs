@@ -5,7 +5,8 @@ use crate::datetime::DATETIME;
 use crate::names::{FAMILY_NAME_1, FAMILY_NAME_2};
 use crate::postag::POSTAG;
 use crate::segment::Segment;
-use crate::text::{char_len, char_slice, leading_repeat_run_units};
+use crate::text::{char_len, char_slice, hit_text, leading_repeat_run_units};
+use crate::trie::DictHit;
 use crate::word::Word;
 use std::cell::Cell;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -127,12 +128,13 @@ fn best_path_with_cap(
         return Vec::new();
     }
 
-    let chunks: Vec<Vec<Word>> = complete.iter().map(|&i| reconstruct(&nodes, i)).collect();
-    let assess: Vec<Assess> = chunks
-        .iter()
-        .map(|chunk| assess_chunk(chunk, preword, text, seg))
-        .collect();
-    chunks[get_tops_beam(&assess, n)].clone()
+    let mut tmp = Vec::new();
+    let mut assess = Vec::with_capacity(complete.len());
+    for &i in &complete {
+        reconstruct_into(&nodes, i, &mut tmp);
+        assess.push(assess_chunk(&tmp, preword, text, seg));
+    }
+    reconstruct(&nodes, complete[get_tops_beam(&assess, n)])
 }
 
 fn outgoing(wordpos: &[Vec<Word>], text: &str, units: &[u16], pos: usize) -> Vec<Word> {
@@ -175,7 +177,16 @@ fn extend(
     if !parent.dummy {
         if let Some(e_prev) = seg.table.table.get(&parent.word.w) {
             if let Some(pp) = parent.prev.as_ref() {
-                d += next_bonus(pp, &parent.word, e_prev.p, cand, seg);
+                d += next_bonus(
+                    &pp.w,
+                    pp.pos(),
+                    &parent.word.w,
+                    e_prev.p,
+                    &cand.w,
+                    cand.pos(),
+                    char_len(&cand.w),
+                    seg,
+                );
             }
         }
     }
@@ -189,7 +200,7 @@ fn extend(
             has_d_v = true;
         }
         if let Some(pw) = pw {
-            d += pair_bonus(pw, &word, wp, &mut has_d_v);
+            d += pair_bonus(&pw.w, pw.pos(), &word.w, wp, &mut has_d_v);
         }
     } else {
         c += 1.0;
@@ -314,11 +325,20 @@ pub(crate) fn assess_chunk(
                 has_d_v = true;
             }
             if let Some(ref pw) = prew {
-                row.d += pair_bonus(pw, w, wp, &mut has_d_v);
+                row.d += pair_bonus(&pw.w, pw.pos(), &w.w, wp, &mut has_d_v);
                 if let Some(nextw) = chunk.get(j + 1) {
-                    row.d += next_bonus(pw, w, wp, nextw, seg);
+                    row.d += next_bonus(
+                        &pw.w,
+                        pw.pos(),
+                        &w.w,
+                        wp,
+                        &nextw.w,
+                        nextw.pos(),
+                        char_len(&nextw.w),
+                        seg,
+                    );
                 } else {
-                    row.d += last_bonus(pw, wp);
+                    row.d += last_bonus(pw.pos(), wp);
                 }
             }
             let mut scored = w.clone();
@@ -338,8 +358,90 @@ pub(crate) fn assess_chunk(
     row
 }
 
-fn reconstruct(nodes: &[Node], mut i: usize) -> Vec<Word> {
+/// Score a short-span hit path without allocating `Word` strings first.
+pub(crate) fn assess_hits(
+    chunk: &[DictHit],
+    preword: Option<&Word>,
+    text: &str,
+    units: &[u16],
+    byte_of: &[usize],
+    seg: &Segment,
+) -> Assess {
+    let mut row = Assess {
+        x: chunk.len() as f64,
+        a: 0.0,
+        b: 0.0,
+        c: 0.0,
+        d: 0.0,
+    };
+    if chunk.is_empty() {
+        return row;
+    }
+    let parts: Vec<_> = chunk
+        .iter()
+        .map(|h| hit_text(text, byte_of, units, h.start, h.len))
+        .collect();
+    let sp = char_len(text) as f64 / chunk.len() as f64;
+    let mut has_d_v = false;
+    let mut pre_w: Option<&str> = preword.map(|w| w.w.as_str());
+    let mut pre_p = preword.map(|w| w.pos()).unwrap_or(0);
+    for (j, h) in chunk.iter().enumerate() {
+        let w = parts[j].as_ref();
+        if let Some(e) = seg.table.table.get(w) {
+            let wp = e.p;
+            row.a += h.f;
+            if j == 0 && preword.is_none() && wp & POSTAG::D_V != 0 {
+                has_d_v = true;
+            }
+            if let Some(pw) = pre_w {
+                row.d += pair_bonus(pw, pre_p, w, wp, &mut has_d_v);
+                if let Some(next) = parts.get(j + 1) {
+                    let next_w = next.as_ref();
+                    let next_p = seg
+                        .table
+                        .table
+                        .get(next_w)
+                        .map(|e| e.p)
+                        .unwrap_or(0);
+                    row.d += next_bonus(
+                        pw,
+                        pre_p,
+                        w,
+                        wp,
+                        next_w,
+                        next_p,
+                        chunk[j + 1].len,
+                        seg,
+                    );
+                } else {
+                    row.d += last_bonus(pre_p, wp);
+                }
+            }
+            pre_w = Some(w);
+            pre_p = wp;
+        } else {
+            row.c += 1.0;
+            pre_w = Some(w);
+            pre_p = 0;
+        }
+        row.b += (sp - h.len as f64).powi(2);
+    }
+    if !has_d_v {
+        row.d -= 0.5;
+    }
+    row.a /= chunk.len() as f64;
+    row.b /= chunk.len() as f64;
+    row
+}
+
+fn reconstruct(nodes: &[Node], i: usize) -> Vec<Word> {
     let mut out = Vec::new();
+    reconstruct_into(nodes, i, &mut out);
+    out
+}
+
+fn reconstruct_into(nodes: &[Node], mut i: usize, out: &mut Vec<Word>) {
+    out.clear();
     loop {
         let n = &nodes[i];
         if n.dummy {
@@ -352,24 +454,23 @@ fn reconstruct(nodes: &[Node], mut i: usize) -> Vec<Word> {
         }
     }
     out.reverse();
-    out
 }
 
-fn pair_bonus(pw: &Word, w: &Word, wp: u32, has_d_v: &mut bool) -> f64 {
+fn pair_bonus(pw_w: &str, pw_p: u32, w: &str, wp: u32, has_d_v: &mut bool) -> f64 {
     let mut d = 0.0;
-    if pw.w == "年" && matches!(w.w.as_str(), "历史" | "歷史" | "歴史") {
+    if pw_w == "年" && matches!(w, "历史" | "歷史" | "歴史") {
         d += 0.5;
     }
-    if pw.pos() & POSTAG::A_M != 0 && (wp & POSTAG::A_Q != 0 || DATETIME.contains(&w.w)) {
+    if pw_p & POSTAG::A_M != 0 && (wp & POSTAG::A_Q != 0 || DATETIME.contains(w)) {
         d += 1.0;
     }
     if wp & POSTAG::D_V != 0 {
         *has_d_v = true;
-        if pw.pos() & POSTAG::D_D != 0 {
+        if pw_p & POSTAG::D_D != 0 {
             d += 1.0;
         }
     }
-    if (pw.pos() & POSTAG::A_NS != 0 || pw.pos() & POSTAG::A_NT != 0 || pw.pos() & POSTAG::D_A != 0)
+    if (pw_p & POSTAG::A_NS != 0 || pw_p & POSTAG::A_NT != 0 || pw_p & POSTAG::D_A != 0)
         && (wp & POSTAG::D_N != 0
             || wp & POSTAG::A_NR != 0
             || wp & POSTAG::A_NS != 0
@@ -378,30 +479,39 @@ fn pair_bonus(pw: &Word, w: &Word, wp: u32, has_d_v: &mut bool) -> f64 {
     {
         d += 1.0;
     }
-    if pw.pos() & POSTAG::D_F != 0 && (wp & POSTAG::A_M != 0 || wp & POSTAG::D_MQ != 0) {
+    if pw_p & POSTAG::D_F != 0 && (wp & POSTAG::A_M != 0 || wp & POSTAG::D_MQ != 0) {
         d += 1.0;
     }
-    if (FAMILY_NAME_1.contains(&pw.w) || FAMILY_NAME_2.contains(&pw.w))
+    if (FAMILY_NAME_1.contains(pw_w) || FAMILY_NAME_2.contains(pw_w))
         && (wp & POSTAG::D_N != 0 || wp & POSTAG::A_NZ != 0)
     {
         d += 1.0;
     }
-    if POSTAG::any(pw.pos(), &[POSTAG::D_S, POSTAG::A_NS]) && POSTAG::any(wp, &[POSTAG::D_F]) {
+    if POSTAG::any(pw_p, &[POSTAG::D_S, POSTAG::A_NS]) && POSTAG::any(wp, &[POSTAG::D_F]) {
         d += 0.5;
     }
     d
 }
 
-fn next_bonus(pw: &Word, w: &Word, wp: u32, nextw: &Word, seg: &Segment) -> f64 {
+fn next_bonus(
+    pw_w: &str,
+    pw_p: u32,
+    w: &str,
+    wp: u32,
+    next_w: &str,
+    next_p_fallback: u32,
+    next_len: usize,
+    seg: &Segment,
+) -> f64 {
     let np = seg
         .table
         .table
-        .get(&nextw.w)
+        .get(next_w)
         .map(|e| e.p)
-        .unwrap_or(nextw.pos());
+        .unwrap_or(next_p_fallback);
     let mut d = 0.0;
     let mut temp_ok = true;
-    if (w.w == "的" || w.w == "之")
+    if (w == "的" || w == "之")
         && np != 0
         && (np & POSTAG::D_N != 0
             || np & POSTAG::D_V != 0
@@ -412,9 +522,9 @@ fn next_bonus(pw: &Word, w: &Word, wp: u32, nextw: &Word, seg: &Segment) -> f64 
     {
         d += 1.5;
         temp_ok = false;
-    } else if pw.pos() != 0 && wp & POSTAG::D_C != 0 {
-        let p = pw.pos() & np;
-        if pw.pos() == np {
+    } else if pw_p != 0 && wp & POSTAG::D_C != 0 {
+        let p = pw_p & np;
+        if pw_p == np {
             d += 1.0;
             temp_ok = false;
         } else if p != 0 {
@@ -430,30 +540,30 @@ fn next_bonus(pw: &Word, w: &Word, wp: u32, nextw: &Word, seg: &Segment) -> f64 
         temp_ok = false;
     }
     if temp_ok && np != 0 && wp & POSTAG::D_P != 0 {
-        if np & POSTAG::A_NR != 0 && char_len(&nextw.w) > 1 {
+        if np & POSTAG::A_NR != 0 && next_len > 1 {
             d += 1.0;
-            if pw.w == "的" {
+            if pw_w == "的" {
                 d += 1.0;
                 temp_ok = false;
             }
         }
     }
     if temp_ok && wp & POSTAG::D_P != 0 {
-        if POSTAG::any(pw.pos(), &[POSTAG::D_N]) && POSTAG::any(np, &[POSTAG::D_N, POSTAG::D_V]) {
+        if POSTAG::any(pw_p, &[POSTAG::D_N]) && POSTAG::any(np, &[POSTAG::D_N, POSTAG::D_V]) {
             d += 1.0;
-        } else if POSTAG::any(pw.pos(), &[POSTAG::D_R]) && POSTAG::any(np, &[POSTAG::D_R]) {
+        } else if POSTAG::any(pw_p, &[POSTAG::D_R]) && POSTAG::any(np, &[POSTAG::D_R]) {
             d += 0.5;
         }
     }
-    if nextw.w == "后"
+    if next_w == "后"
         && wp & POSTAG::D_T != 0
-        && POSTAG::any(pw.pos(), &[POSTAG::D_MQ, POSTAG::A_M])
+        && POSTAG::any(pw_p, &[POSTAG::D_MQ, POSTAG::A_M])
     {
         d += 1.0;
-    } else if (nextw.w == "后" || nextw.w == "後") && POSTAG::any(wp, &[POSTAG::D_F]) {
+    } else if (next_w == "后" || next_w == "後") && POSTAG::any(wp, &[POSTAG::D_F]) {
         d += 1.0;
-    } else if (w.w == "后" || w.w == "後")
-        && POSTAG::any(pw.pos(), &[POSTAG::D_F])
+    } else if (w == "后" || w == "後")
+        && POSTAG::any(wp, &[POSTAG::D_F])
         && POSTAG::any(np, &[POSTAG::D_N])
     {
         d += 1.0;
@@ -461,8 +571,8 @@ fn next_bonus(pw: &Word, w: &Word, wp: u32, nextw: &Word, seg: &Segment) -> f64 
     d
 }
 
-fn last_bonus(pw: &Word, wp: u32) -> f64 {
-    if wp & POSTAG::D_F != 0 && POSTAG::any(pw.pos(), &[POSTAG::D_N]) {
+fn last_bonus(pw_p: u32, wp: u32) -> f64 {
+    if wp & POSTAG::D_F != 0 && POSTAG::any(pw_p, &[POSTAG::D_N]) {
         1.0
     } else {
         0.0

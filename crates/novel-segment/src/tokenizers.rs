@@ -450,32 +450,26 @@ fn filter_word(
     }
     let wordpos = get_pos_info(&hits, units.len());
     // Enumerating get_chunks is exponential past this span length.
-    let materialized = materialize_pos(&wordpos, text, units);
     if units.len() > DICT_ENUM_MAX_SPAN {
+        let materialized = materialize_pos(&wordpos, text, units);
         let mut curr = crate::dict_path::best_path(&materialized, text, preword, seg);
         curr = refine_merged_chunks(curr, preword, seg);
         curr.retain(|w| seg.table.table.contains_key(&w.w));
         return curr;
     }
     let mut memo = HashMap::new();
-    let chunks = get_chunks(
-        &materialized,
-        0,
-        text,
-        units,
-        0,
-        None,
-        seg,
-        &mut memo,
-    );
+    let chunks = get_chunks(&wordpos, 0, units, 0, None, seg, &mut memo);
     if chunks.is_empty() {
         return Vec::new();
     }
-    let assess: Vec<_> = chunks
-        .iter()
-        .map(|chunk| crate::dict_path::assess_chunk(chunk, preword, text, seg))
-        .collect();
-    let mut curr = chunks[crate::dict_path::get_tops(&assess)].clone();
+    let byte_of = utf16_byte_of(text);
+    let mut assess = Vec::with_capacity(chunks.len());
+    for chunk in &chunks {
+        assess.push(crate::dict_path::assess_hits(
+            chunk, preword, text, units, &byte_of, seg,
+        ));
+    }
+    let mut curr = materialize_hits(&chunks[crate::dict_path::get_tops(&assess)], text, units, &byte_of);
     curr.retain(|w| seg.table.table.contains_key(&w.w));
     curr
 }
@@ -574,28 +568,34 @@ fn materialize_pos(wordpos: &[Vec<DictHit>], text: &str, units: &[u16]) -> Vec<V
     let byte_of = utf16_byte_of(text);
     wordpos
         .iter()
-        .map(|hits| {
-            hits.iter()
-                .map(|h| {
-                    Word::new(hit_text(text, &byte_of, units, h.start, h.len).into_owned())
-                        .with_c(h.start)
-                        .with_f(h.f)
-                })
-                .collect()
+        .map(|hits| materialize_hits(hits, text, units, &byte_of))
+        .collect()
+}
+
+fn materialize_hits(
+    hits: &[DictHit],
+    text: &str,
+    units: &[u16],
+    byte_of: &[usize],
+) -> Vec<Word> {
+    hits.iter()
+        .map(|h| {
+            Word::new(hit_text(text, byte_of, units, h.start, h.len).into_owned())
+                .with_c(h.start)
+                .with_f(h.f)
         })
         .collect()
 }
 
 fn get_chunks(
-    wordpos: &[Vec<Word>],
+    wordpos: &[Vec<DictHit>],
     pos: usize,
-    text: &str,
     units: &[u16],
     total_count: usize,
     max_chunk: Option<usize>,
     seg: &Segment,
-    memo: &mut HashMap<(usize, usize, usize), Vec<Vec<Word>>>,
-) -> Vec<Vec<Word>> {
+    memo: &mut HashMap<(usize, usize, usize), Vec<Vec<DictHit>>>,
+) -> Vec<Vec<DictHit>> {
     let max_chunk_count = if total_count == 0 {
         let mut m = seg.max_chunk_count;
         if units.len().saturating_sub(pos) < m {
@@ -619,15 +619,17 @@ fn get_chunks(
 
     if pos < units.len() {
         if let Some(run) = leading_repeat_run_units(&units[pos..]) {
-            let s1 = char_slice(text, pos, run);
-            let word = Word::new(s1).with_c(pos).with_f(0.0);
+            let hit = DictHit {
+                start: pos,
+                len: run,
+                f: 0.0,
+            };
             let ret = if pos + run >= units.len() {
-                vec![vec![word]]
+                vec![vec![hit]]
             } else {
                 let chunks = get_chunks(
                     wordpos,
                     pos + run,
-                    text,
                     units,
                     total_count,
                     Some(max_chunk_count),
@@ -637,7 +639,7 @@ fn get_chunks(
                 chunks
                     .into_iter()
                     .map(|ws| {
-                        let mut v = vec![word.clone()];
+                        let mut v = vec![hit];
                         v.extend(ws);
                         v
                     })
@@ -651,18 +653,21 @@ fn get_chunks(
     let total_count = total_count + 1;
     let words = wordpos.get(pos).map(Vec::as_slice).unwrap_or(&[]);
     let mut ret = Vec::new();
-    for word in words {
-        let nextcur = word.c.unwrap_or(pos) + char_len(&word.w);
+    for &hit in words {
+        let nextcur = hit.start + hit.len;
         let next_exists = wordpos.get(nextcur).map(|v| !v.is_empty()).unwrap_or(false);
         if !next_exists {
-            ret.push(vec![word.clone()]);
+            ret.push(vec![hit]);
         } else if total_count > max_chunk_count {
-            let mut w1 = vec![word.clone()];
+            let mut w1 = vec![hit];
             let mut j = nextcur;
             while let Some(bucket) = wordpos.get(j) {
-                if let Some(w2) = bucket.first() {
-                    w1.push(w2.clone());
-                    j += char_len(&w2.w);
+                if let Some(&w2) = bucket.first() {
+                    w1.push(w2);
+                    if w2.len == 0 {
+                        break;
+                    }
+                    j += w2.len;
                 } else {
                     break;
                 }
@@ -672,7 +677,6 @@ fn get_chunks(
             let chunks = get_chunks(
                 wordpos,
                 nextcur,
-                text,
                 units,
                 total_count,
                 Some(max_chunk_count),
@@ -680,7 +684,7 @@ fn get_chunks(
                 memo,
             );
             for ws in chunks {
-                let mut v = vec![word.clone()];
+                let mut v = vec![hit];
                 v.extend(ws);
                 ret.push(v);
             }
