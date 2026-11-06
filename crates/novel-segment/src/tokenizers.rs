@@ -451,48 +451,45 @@ fn filter_word(
     let wordpos = get_pos_info(&hits, units.len());
     // Enumerating get_chunks is exponential past this span length.
     if units.len() > DICT_ENUM_MAX_SPAN {
-        let materialized = materialize_pos(&wordpos, text, units);
-        let mut curr = crate::dict_path::best_path(&materialized, text, preword, seg);
-        curr = refine_merged_chunks(curr, preword, seg);
+        let mut curr = crate::dict_path::best_path(&wordpos, text, units, preword, seg);
+        curr = refine_merged_chunks(curr, preword, &wordpos, text, units, seg);
         curr.retain(|w| seg.table.table.contains_key(&w.w));
         return curr;
     }
-    let mut memo = HashMap::new();
-    let chunks = get_chunks(&wordpos, 0, units, 0, None, seg, &mut memo);
-    if chunks.is_empty() {
-        return Vec::new();
-    }
-    let byte_of = utf16_byte_of(text);
-    let mut assess = Vec::with_capacity(chunks.len());
-    for chunk in &chunks {
-        assess.push(crate::dict_path::assess_hits(
-            chunk, preword, text, units, &byte_of, seg,
-        ));
-    }
-    let mut curr = materialize_hits(&chunks[crate::dict_path::get_tops(&assess)], text, units, &byte_of);
-    curr.retain(|w| seg.table.table.contains_key(&w.w));
-    curr
+    let mut store = PathStore::default();
+    pick_best_chunks(
+        &wordpos,
+        0,
+        units.len(),
+        preword,
+        text,
+        units,
+        seg,
+        &mut store,
+        &mut HashMap::new(),
+    )
 }
 
 /// After beam search, re-enumerate token windows that still fit in a short span
 /// and keep a cut only when it uses fewer words (MMSEG's strongest signal).
 ///
-/// Only windows that still contain a unigram are enumerated. All-multichar
-/// windows are already locally coarse; re-running `get_chunks` on them was
-/// most of the long-span cost and did not change measured output.
-///
-/// `match_word` writes `Word.c` relative to the window. `DictTokenizer::split`
-/// reads `c` as an offset in the parent span and gap-fills from the original
-/// text, so each accepted cut is rewritten onto the parent cursor.
+/// Only windows that still contain a unigram are enumerated. Hits come from
+/// the parent `wordpos` (no second trie walk). `Word.c` stays an absolute
+/// offset in the parent span so `DictTokenizer` gap-fill still works.
 fn refine_merged_chunks(
     mut path: Vec<Word>,
     preword: Option<&Word>,
+    wordpos: &[Vec<DictHit>],
+    text: &str,
+    units: &[u16],
     seg: &Segment,
 ) -> Vec<Word> {
     const MAX_WINDOW_TOKENS: usize = 6;
     if path.len() < 2 || path.iter().all(|w| char_len(&w.w) != 1) {
         return path;
     }
+    let mut store = PathStore::default();
+    let mut memo = HashMap::new();
     let mut i = 0usize;
     let mut origin = 0usize;
     while i < path.len() {
@@ -516,18 +513,23 @@ fn refine_merged_chunks(
                 continue;
             }
             let sub: String = path[i..=j].iter().map(|w| w.w.as_str()).collect();
-            let mut exact = match_word(&sub, 0, prev, seg);
+            let exact = pick_best_chunks(
+                wordpos,
+                origin,
+                origin + span,
+                prev,
+                text,
+                units,
+                seg,
+                &mut store,
+                &mut memo,
+            );
             if exact.is_empty() || exact.len() >= j - i + 1 {
                 continue;
             }
             let rebuilt: String = exact.iter().map(|w| w.w.as_str()).collect();
             if rebuilt != sub {
                 continue;
-            }
-            let mut off = origin;
-            for w in &mut exact {
-                w.c = Some(off);
-                off += char_len(&w.w);
             }
             best = Some((j, exact));
         }
@@ -564,12 +566,79 @@ fn get_pos_info(hits: &[DictHit], n: usize) -> Vec<Vec<DictHit>> {
     wordpos
 }
 
-fn materialize_pos(wordpos: &[Vec<DictHit>], text: &str, units: &[u16]) -> Vec<Vec<Word>> {
+/// One segmentation path as a linked list so memoized suffixes are shared.
+/// Nodes live in a per-search arena; tails are indices, not heap `Rc`s.
+struct PathNode {
+    hit: DictHit,
+    tail: Option<u32>,
+}
+
+#[derive(Default)]
+struct PathStore {
+    nodes: Vec<PathNode>,
+}
+
+impl PathStore {
+    fn push(&mut self, hit: DictHit, tail: Option<u32>) -> u32 {
+        let i = self.nodes.len() as u32;
+        self.nodes.push(PathNode { hit, tail });
+        i
+    }
+
+    fn from_hits(&mut self, hits: &[DictHit]) -> u32 {
+        let mut tail = None;
+        for &hit in hits.iter().rev() {
+            tail = Some(self.push(hit, tail));
+        }
+        tail.expect("non-empty hit path")
+    }
+
+    fn prepend(&mut self, hit: DictHit, tails: &[u32]) -> Vec<u32> {
+        tails.iter().map(|&t| self.push(hit, Some(t))).collect()
+    }
+
+    fn flatten(&self, mut i: u32, out: &mut Vec<DictHit>) {
+        out.clear();
+        loop {
+            let n = &self.nodes[i as usize];
+            out.push(n.hit);
+            match n.tail {
+                Some(t) => i = t,
+                None => break,
+            }
+        }
+    }
+}
+
+fn pick_best_chunks(
+    wordpos: &[Vec<DictHit>],
+    pos: usize,
+    end: usize,
+    preword: Option<&Word>,
+    text: &str,
+    units: &[u16],
+    seg: &Segment,
+    store: &mut PathStore,
+    memo: &mut HashMap<(usize, usize, usize, usize), Vec<u32>>,
+) -> Vec<Word> {
+    let chunks = get_chunks(wordpos, pos, end, units, 0, None, seg, store, memo);
+    if chunks.is_empty() {
+        return Vec::new();
+    }
     let byte_of = utf16_byte_of(text);
-    wordpos
-        .iter()
-        .map(|hits| materialize_hits(hits, text, units, &byte_of))
-        .collect()
+    let span_len = end - pos;
+    let mut tmp = Vec::new();
+    let mut assess = Vec::with_capacity(chunks.len());
+    for &head in &chunks {
+        store.flatten(head, &mut tmp);
+        assess.push(crate::dict_path::assess_hits(
+            &tmp, preword, text, units, &byte_of, span_len, seg,
+        ));
+    }
+    store.flatten(chunks[crate::dict_path::get_tops(&assess)], &mut tmp);
+    let mut curr = materialize_hits(&tmp, text, units, &byte_of);
+    curr.retain(|w| seg.table.table.contains_key(&w.w));
+    curr
 }
 
 fn materialize_hits(
@@ -590,15 +659,17 @@ fn materialize_hits(
 fn get_chunks(
     wordpos: &[Vec<DictHit>],
     pos: usize,
+    end: usize,
     units: &[u16],
     total_count: usize,
     max_chunk: Option<usize>,
     seg: &Segment,
-    memo: &mut HashMap<(usize, usize, usize), Vec<Vec<DictHit>>>,
-) -> Vec<Vec<DictHit>> {
+    store: &mut PathStore,
+    memo: &mut HashMap<(usize, usize, usize, usize), Vec<u32>>,
+) -> Vec<u32> {
     let max_chunk_count = if total_count == 0 {
         let mut m = seg.max_chunk_count;
-        if units.len().saturating_sub(pos) < m {
+        if end.saturating_sub(pos) < m {
             m += 1;
         }
         m
@@ -612,38 +683,33 @@ fn get_chunks(
         max_chunk.unwrap_or(seg.max_chunk_count)
     };
 
-    let key = (pos, total_count, max_chunk_count);
+    let key = (pos, end, total_count, max_chunk_count);
     if let Some(cached) = memo.get(&key) {
         return cached.clone();
     }
 
-    if pos < units.len() {
-        if let Some(run) = leading_repeat_run_units(&units[pos..]) {
+    if pos < end {
+        if let Some(run) = leading_repeat_run_units(&units[pos..end]) {
             let hit = DictHit {
                 start: pos,
                 len: run,
                 f: 0.0,
             };
-            let ret = if pos + run >= units.len() {
-                vec![vec![hit]]
+            let ret = if pos + run >= end {
+                vec![store.push(hit, None)]
             } else {
-                let chunks = get_chunks(
+                let tails = get_chunks(
                     wordpos,
                     pos + run,
+                    end,
                     units,
                     total_count,
                     Some(max_chunk_count),
                     seg,
+                    store,
                     memo,
                 );
-                chunks
-                    .into_iter()
-                    .map(|ws| {
-                        let mut v = vec![hit];
-                        v.extend(ws);
-                        v
-                    })
-                    .collect()
+                store.prepend(hit, &tails)
             };
             memo.insert(key, ret.clone());
             return ret;
@@ -652,42 +718,75 @@ fn get_chunks(
 
     let total_count = total_count + 1;
     let words = wordpos.get(pos).map(Vec::as_slice).unwrap_or(&[]);
+    let mut any_fit = false;
+    for h in words {
+        if h.len > 0 && h.start + h.len <= end {
+            any_fit = true;
+            break;
+        }
+    }
+    let fallback = [DictHit {
+        start: pos,
+        len: 1,
+        f: 0.0,
+    }];
+    let hits: &[DictHit] = if any_fit {
+        words
+    } else if pos < end {
+        &fallback
+    } else {
+        &[]
+    };
+
     let mut ret = Vec::new();
-    for &hit in words {
+    for &hit in hits {
+        if hit.len == 0 || hit.start + hit.len > end {
+            continue;
+        }
         let nextcur = hit.start + hit.len;
+        if nextcur >= end {
+            ret.push(store.push(hit, None));
+            continue;
+        }
         let next_exists = wordpos.get(nextcur).map(|v| !v.is_empty()).unwrap_or(false);
         if !next_exists {
-            ret.push(vec![hit]);
+            ret.push(store.push(hit, None));
         } else if total_count > max_chunk_count {
             let mut w1 = vec![hit];
             let mut j = nextcur;
-            while let Some(bucket) = wordpos.get(j) {
-                if let Some(&w2) = bucket.first() {
+            while j < end {
+                let Some(bucket) = wordpos.get(j) else { break };
+                if let Some(&w2) = bucket
+                    .iter()
+                    .find(|h| h.len > 0 && h.start + h.len <= end)
+                {
                     w1.push(w2);
-                    if w2.len == 0 {
-                        break;
-                    }
                     j += w2.len;
+                } else if j + 1 <= end {
+                    w1.push(DictHit {
+                        start: j,
+                        len: 1,
+                        f: 0.0,
+                    });
+                    j += 1;
                 } else {
                     break;
                 }
             }
-            ret.push(w1);
+            ret.push(store.from_hits(&w1));
         } else {
-            let chunks = get_chunks(
+            let tails = get_chunks(
                 wordpos,
                 nextcur,
+                end,
                 units,
                 total_count,
                 Some(max_chunk_count),
                 seg,
+                store,
                 memo,
             );
-            for ws in chunks {
-                let mut v = vec![hit];
-                v.extend(ws);
-                ret.push(v);
-            }
+            ret.extend(store.prepend(hit, &tails));
         }
     }
     memo.insert(key, ret.clone());

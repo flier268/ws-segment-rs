@@ -5,7 +5,7 @@ use crate::datetime::DATETIME;
 use crate::names::{FAMILY_NAME_1, FAMILY_NAME_2};
 use crate::postag::POSTAG;
 use crate::segment::Segment;
-use crate::text::{char_len, char_slice, hit_text, leading_repeat_run_units};
+use crate::text::{char_len, hit_text, leading_repeat_run_units, utf16_byte_of};
 use crate::trie::DictHit;
 use crate::word::Word;
 use std::cell::Cell;
@@ -44,8 +44,11 @@ pub(crate) struct Assess {
 }
 
 struct Node {
-    word: Word,
-    prev: Option<Word>,
+    hit: DictHit,
+    p: u32,
+    in_dict: bool,
+    prev_hit: Option<DictHit>,
+    prev_p: u32,
     /// Path word count (must fit spans longer than `u16::MAX` units).
     x: u32,
     sum_f: f64,
@@ -57,39 +60,40 @@ struct Node {
     dummy: bool,
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
-struct MergeKey {
-    last: String,
-    prev: String,
-    has_d_v: bool,
-    x: u32,
-}
-
 pub(crate) fn best_path(
-    wordpos: &[Vec<Word>],
+    wordpos: &[Vec<DictHit>],
     text: &str,
+    units: &[u16],
     preword: Option<&Word>,
     seg: &Segment,
 ) -> Vec<Word> {
-    best_path_with_cap(wordpos, text, preword, seg, resolve_max_states())
+    best_path_with_cap(wordpos, text, units, preword, seg, resolve_max_states())
 }
 
 fn best_path_with_cap(
-    wordpos: &[Vec<Word>],
+    wordpos: &[Vec<DictHit>],
     text: &str,
+    units: &[u16],
     preword: Option<&Word>,
     seg: &Segment,
     cap: usize,
 ) -> Vec<Word> {
-    let n = char_len(text);
+    let n = units.len();
     if n == 0 {
         return Vec::new();
     }
-    let units: Vec<u16> = text.encode_utf16().collect();
+    let byte_of = utf16_byte_of(text);
 
     let mut nodes: Vec<Node> = vec![Node {
-        word: Word::new(""),
-        prev: preword.cloned(),
+        hit: DictHit {
+            start: 0,
+            len: 0,
+            f: 0.0,
+        },
+        p: 0,
+        in_dict: false,
+        prev_hit: None,
+        prev_p: preword.map(|w| w.pos()).unwrap_or(0),
         x: 0,
         sum_f: 0.0,
         sum_len2: 0.0,
@@ -106,18 +110,29 @@ fn best_path_with_cap(
         if at[pos].is_empty() {
             continue;
         }
-        let outgoing = outgoing(wordpos, text, &units, pos);
-        if outgoing.is_empty() {
+        let outgoing = outgoing(wordpos, units, pos);
+        let slice = outgoing.as_slice();
+        if slice.is_empty() {
             continue;
         }
-        for ni in at[pos].clone() {
-            for cand in &outgoing {
-                let len = char_len(&cand.w);
-                let end = pos + len;
-                if end > n || len == 0 {
+        let n_at = at[pos].len();
+        for k in 0..n_at {
+            let ni = at[pos][k];
+            for &cand in slice {
+                let end = pos + cand.len;
+                if end > n || cand.len == 0 {
                     continue;
                 }
-                let child = extend(&nodes[ni], cand, preword, seg, ni);
+                let child = extend(
+                    &nodes[ni],
+                    cand,
+                    preword,
+                    text,
+                    units,
+                    &byte_of,
+                    seg,
+                    ni,
+                );
                 insert_node(&mut nodes, &mut at[end], child, cap);
             }
         }
@@ -128,91 +143,136 @@ fn best_path_with_cap(
         return Vec::new();
     }
 
-    let mut tmp = Vec::new();
     let mut assess = Vec::with_capacity(complete.len());
     for &i in &complete {
-        reconstruct_into(&nodes, i, &mut tmp);
-        assess.push(assess_chunk(&tmp, preword, text, seg));
+        assess.push(assess_node(&nodes[i], n));
     }
-    reconstruct(&nodes, complete[get_tops_beam(&assess, n)])
+    reconstruct(&nodes, complete[get_tops_beam(&assess, n)], text, units, &byte_of)
 }
 
-fn outgoing(wordpos: &[Vec<Word>], text: &str, units: &[u16], pos: usize) -> Vec<Word> {
-    if pos < units.len() {
-        if let Some(run) = leading_repeat_run_units(&units[pos..]) {
-            let s1 = char_slice(text, pos, run);
-            return vec![Word::new(s1).with_c(pos).with_f(0.0)];
+enum Outgoing<'a> {
+    One(DictHit),
+    Bucket(&'a [DictHit]),
+}
+
+impl<'a> Outgoing<'a> {
+    fn as_slice(&self) -> &[DictHit] {
+        match self {
+            Outgoing::One(h) => std::slice::from_ref(h),
+            Outgoing::Bucket(s) => s,
         }
     }
-    let mut outs = wordpos.get(pos).cloned().unwrap_or_default();
-    // Keep the DAG traversable when a UTF-16 unit has no dictionary hit
-    // (e.g. surrogate half that `char_at` cannot map to a `char`).
-    if outs.is_empty() && pos < units.len() {
-        let unit = String::from_utf16_lossy(&units[pos..pos + 1]);
-        outs.push(Word::new(unit).with_c(pos).with_f(0.0));
+}
+
+fn outgoing<'a>(wordpos: &'a [Vec<DictHit>], units: &[u16], pos: usize) -> Outgoing<'a> {
+    if pos < units.len() {
+        if let Some(run) = leading_repeat_run_units(&units[pos..]) {
+            return Outgoing::One(DictHit {
+                start: pos,
+                len: run,
+                f: 0.0,
+            });
+        }
     }
-    outs
+    match wordpos.get(pos) {
+        Some(v) if !v.is_empty() => Outgoing::Bucket(v),
+        _ if pos < units.len() => Outgoing::One(DictHit {
+            start: pos,
+            len: 1,
+            f: 0.0,
+        }),
+        _ => Outgoing::Bucket(&[]),
+    }
 }
 
 fn extend(
     parent: &Node,
-    cand: &Word,
+    cand: DictHit,
     preword: Option<&Word>,
+    text: &str,
+    units: &[u16],
+    byte_of: &[usize],
     seg: &Segment,
     parent_i: usize,
 ) -> Node {
-    let len = char_len(&cand.w) as f64;
-    let mut word = cand.clone();
+    let len = cand.len as f64;
+    let cand_w = hit_text(text, byte_of, units, cand.start, cand.len);
+    let cand_w = cand_w.as_ref();
     let mut sum_f = parent.sum_f;
     let mut c = parent.c;
     let mut d = parent.d;
     let mut has_d_v = parent.has_d_v;
 
-    let pw = if parent.dummy {
-        preword
+    let parent_w = if parent.dummy {
+        None
     } else {
-        Some(&parent.word)
+        Some(hit_text(
+            text,
+            byte_of,
+            units,
+            parent.hit.start,
+            parent.hit.len,
+        ))
     };
 
-    if !parent.dummy {
-        if let Some(e_prev) = seg.table.table.get(&parent.word.w) {
-            if let Some(pp) = parent.prev.as_ref() {
-                d += next_bonus(
-                    &pp.w,
-                    pp.pos(),
-                    &parent.word.w,
-                    e_prev.p,
-                    &cand.w,
-                    cand.pos(),
-                    char_len(&cand.w),
-                    seg,
-                );
-            }
+    if !parent.dummy && parent.in_dict {
+        let parent_s = parent_w.as_deref().unwrap_or("");
+        let pp_cow;
+        let pp_s: Option<&str> = if let Some(pp) = parent.prev_hit {
+            pp_cow = hit_text(text, byte_of, units, pp.start, pp.len);
+            Some(pp_cow.as_ref())
+        } else {
+            preword.map(|w| w.w.as_str())
+        };
+        if let Some(pp_s) = pp_s {
+            d += next_bonus(
+                pp_s,
+                parent.prev_p,
+                parent_s,
+                parent.p,
+                cand_w,
+                0,
+                cand.len,
+                seg,
+            );
         }
     }
 
-    if let Some(e) = seg.table.table.get(&cand.w) {
-        let wp = e.p;
-        word.p = Some(wp);
-        word.f = Some(cand.f.unwrap_or(e.f));
-        sum_f += word.f.unwrap_or(e.f);
+    let (in_dict, wp, freq) = if let Some(e) = seg.table.table.get(cand_w) {
+        (true, e.p, cand.f)
+    } else {
+        (false, 0, 0.0)
+    };
+    if in_dict {
+        sum_f += freq;
         if parent.dummy && preword.is_none() && wp & POSTAG::D_V != 0 {
             has_d_v = true;
         }
-        if let Some(pw) = pw {
-            d += pair_bonus(&pw.w, pw.pos(), &word.w, wp, &mut has_d_v);
+        let (pw_s, pw_p) = if parent.dummy {
+            (
+                preword.map(|w| w.w.as_str()),
+                preword.map(|w| w.pos()).unwrap_or(0),
+            )
+        } else {
+            (parent_w.as_deref(), parent.p)
+        };
+        if let Some(pw_s) = pw_s {
+            d += pair_bonus(pw_s, pw_p, cand_w, wp, &mut has_d_v);
         }
     } else {
         c += 1.0;
     }
 
     Node {
-        prev: if parent.dummy {
-            preword.cloned()
+        hit: cand,
+        p: wp,
+        in_dict,
+        prev_hit: if parent.dummy { None } else { Some(parent.hit) },
+        prev_p: if parent.dummy {
+            preword.map(|w| w.pos()).unwrap_or(0)
         } else {
-            Some(parent.word.clone())
+            parent.p
         },
-        word,
         x: parent.x + 1,
         sum_f,
         sum_len2: parent.sum_len2 + len * len,
@@ -225,18 +285,16 @@ fn extend(
 }
 
 fn insert_node(nodes: &mut Vec<Node>, slot: &mut Vec<usize>, child: Node, cap: usize) {
-    let key = MergeKey {
-        last: child.word.w.clone(),
-        prev: child.prev.as_ref().map(|w| w.w.clone()).unwrap_or_default(),
-        has_d_v: child.has_d_v,
-        x: child.x,
-    };
     let mut dominated = false;
     let mut drop: Vec<usize> = Vec::new();
     for (idx, &existing) in slot.iter().enumerate() {
         let e = &nodes[existing];
-        let e_prev = e.prev.as_ref().map(|w| w.w.as_str()).unwrap_or("");
-        if e.word.w != key.last || e_prev != key.prev || e.has_d_v != key.has_d_v || e.x != key.x {
+        if e.hit.start != child.hit.start
+            || e.hit.len != child.hit.len
+            || e.prev_hit.map(|h| (h.start, h.len)) != child.prev_hit.map(|h| (h.start, h.len))
+            || e.has_d_v != child.has_d_v
+            || e.x != child.x
+        {
             continue;
         }
         if dominates(e, &child) {
@@ -298,6 +356,7 @@ fn dominates(a: &Node, b: &Node) -> bool {
     ge_f && ge_d && le_len && le_c && better
 }
 
+#[allow(dead_code)]
 pub(crate) fn assess_chunk(
     chunk: &[Word],
     preword: Option<&Word>,
@@ -359,12 +418,16 @@ pub(crate) fn assess_chunk(
 }
 
 /// Score a short-span hit path without allocating `Word` strings first.
+///
+/// `span_len` is the UTF-16 length of the span being scored (the whole short
+/// span, or a refine window).
 pub(crate) fn assess_hits(
     chunk: &[DictHit],
     preword: Option<&Word>,
     text: &str,
     units: &[u16],
     byte_of: &[usize],
+    span_len: usize,
     seg: &Segment,
 ) -> Assess {
     let mut row = Assess {
@@ -381,7 +444,7 @@ pub(crate) fn assess_hits(
         .iter()
         .map(|h| hit_text(text, byte_of, units, h.start, h.len))
         .collect();
-    let sp = char_len(text) as f64 / chunk.len() as f64;
+    let sp = span_len as f64 / chunk.len() as f64;
     let mut has_d_v = false;
     let mut pre_w: Option<&str> = preword.map(|w| w.w.as_str());
     let mut pre_p = preword.map(|w| w.pos()).unwrap_or(0);
@@ -434,20 +497,67 @@ pub(crate) fn assess_hits(
     row
 }
 
-fn reconstruct(nodes: &[Node], i: usize) -> Vec<Word> {
+fn assess_node(n: &Node, span: usize) -> Assess {
+    let x = n.x as f64;
+    if x == 0.0 {
+        return Assess {
+            x: 0.0,
+            a: 0.0,
+            b: 0.0,
+            c: 0.0,
+            d: 0.0,
+        };
+    }
+    let mut d = n.d;
+    if n.in_dict {
+        d += last_bonus(n.prev_p, n.p);
+    }
+    if !n.has_d_v {
+        d -= 0.5;
+    }
+    let sp = span as f64 / x;
+    Assess {
+        x,
+        a: n.sum_f / x,
+        b: n.sum_len2 / x - sp * sp,
+        c: n.c,
+        d,
+    }
+}
+
+fn reconstruct(
+    nodes: &[Node],
+    i: usize,
+    text: &str,
+    units: &[u16],
+    byte_of: &[usize],
+) -> Vec<Word> {
     let mut out = Vec::new();
-    reconstruct_into(nodes, i, &mut out);
+    reconstruct_into(nodes, i, text, units, byte_of, &mut out);
     out
 }
 
-fn reconstruct_into(nodes: &[Node], mut i: usize, out: &mut Vec<Word>) {
+fn reconstruct_into(
+    nodes: &[Node],
+    mut i: usize,
+    text: &str,
+    units: &[u16],
+    byte_of: &[usize],
+    out: &mut Vec<Word>,
+) {
     out.clear();
     loop {
         let n = &nodes[i];
         if n.dummy {
             break;
         }
-        out.push(n.word.clone());
+        let mut w = Word::new(hit_text(text, byte_of, units, n.hit.start, n.hit.len).into_owned())
+            .with_c(n.hit.start)
+            .with_f(n.hit.f);
+        if n.in_dict {
+            w.p = Some(n.p);
+        }
+        out.push(w);
         match n.parent {
             Some(p) => i = p,
             None => break,

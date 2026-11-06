@@ -32,7 +32,7 @@ ws-segment-rs = { version = "0.1", default-features = false }
 
 `DictTokenizer` 用詞庫重疊詞組成切法，再用 MMSEG 式的 `Assess`／`get_tops` 打分（詞數、平均詞頻、詞長變異、未知詞、相鄰詞加分）。
 
-詞庫匹配走 UTF-16 trie（每個位置沿前綴往下走，只在真正成詞時才取出）。短段 `get_chunks` 枚舉路徑只存 `DictHit`（起點／長度／詞頻），打分後才把贏家物化成詞面；memo 因此只 clone 這些 Copy 邊，不再複製整條 `Word` 字串。長段 beam 也只還原打分中的那一條存活路徑。
+詞庫匹配走 UTF-16 trie（每個位置沿前綴往下走，只在真正成詞時才取出）。短段 `get_chunks` 把路徑存成後綴共享的 `DictHit` 鏈（arena 索引），打分後才把贏家物化成詞面。長段 beam 節點也只存 `DictHit`，用路徑累加分直接 `get_tops_beam`，只還原贏家；refine 重用父段 hits，不再對窗子樹重跑一遍。
 
 JS／舊 Rust 對**整段**做 `get_chunks` 枚舉，未切開的長漢字會指數展開，記憶體與時間都會爆。Rust 現在依**目前這一段**的 UTF-16 長度分流（不是把詞從中間硬切）：
 
