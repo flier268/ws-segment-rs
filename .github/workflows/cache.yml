@@ -48,6 +48,10 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+      - name: install clang and lld
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld
       - name: install deps
         run: yarn run ci:install
       - name: run script

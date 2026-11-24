@@ -17,3 +17,6 @@ rust-version = "1.70"
 [workspace.dependencies]
 ws-segment-rs-dict = { path = "crates/novel-segment-dict", version = "0.1.6" }
 ws-segment-rs = { path = "crates/novel-segment", version = "0.1.6" }
+
+[profile.dev.package."*"]
+debug = 0

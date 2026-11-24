@@ -228,3 +228,4 @@ dist/*.umd.*.*s
 .turbo
 
 !.kilocode
+!.cargo
